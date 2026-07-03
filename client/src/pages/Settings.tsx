@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  User, Lock, Bell, Palette, Shield, Save, CreditCard,
+  User, Lock, Bell, Palette, Shield, Save,
   Puzzle, Brain, Trash2, ExternalLink, Check, LogOut, Upload, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -17,14 +17,13 @@ import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 
-type Tab = 'profile' | 'security' | 'notifications' | 'appearance' | 'billing' | 'integrations' | 'ai';
+type Tab = 'profile' | 'security' | 'notifications' | 'appearance' | 'integrations' | 'ai';
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; group?: string }[] = [
   { id: 'profile',       label: 'Profile',        icon: User,       group: 'Account' },
   { id: 'security',      label: 'Security',        icon: Shield,     group: 'Account' },
   { id: 'notifications', label: 'Notifications',   icon: Bell,       group: 'Account' },
   { id: 'appearance',    label: 'Appearance',      icon: Palette,    group: 'Account' },
-  { id: 'billing',       label: 'Billing',         icon: CreditCard, group: 'Workspace' },
   { id: 'integrations',  label: 'Integrations',    icon: Puzzle,     group: 'Workspace' },
   { id: 'ai',            label: 'AI Preferences',  icon: Brain,      group: 'Workspace' },
 ];
@@ -482,34 +481,7 @@ const Settings = () => {
                 </Card>
               )}
 
-              {/* Billing */}
-              {tab === 'billing' && (
-                <div className="flex flex-col gap-4">
-                  <Card variant="brand">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm font-bold text-indigo-900">Pro Plan</p>
-                          <Badge variant="primary">Active</Badge>
-                        </div>
-                        <p className="text-xs text-indigo-800/85 font-semibold">$15/user/month · 8 seats · Next billing Dec 1, 2025</p>
-                      </div>
-                      <Button variant="soft" size="sm">Manage</Button>
-                    </div>
-                  </Card>
-                  <Card>
-                    <SectionHeader title="Payment Method" />
-                    <div className="flex items-center gap-3 p-3 rounded-xl bg-[var(--color-bg-tertiary)] border border-[var(--color-border)]">
-                      <CreditCard size={16} className="text-[var(--color-text-dim)]" />
-                      <div>
-                        <p className="text-sm font-bold text-[var(--color-text)]">Visa ending in 4242</p>
-                        <p className="text-xs text-[var(--color-text-secondary)] font-medium">Expires 12/26</p>
-                      </div>
-                      <Button variant="ghost" size="xs" className="ml-auto">Update</Button>
-                    </div>
-                  </Card>
-                </div>
-              )}
+
 
               {/* Integrations */}
               {tab === 'integrations' && (

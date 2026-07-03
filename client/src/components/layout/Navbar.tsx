@@ -1,5 +1,4 @@
-import { useRef, useState } from 'react';
-import { Search, Menu, Plus, Video } from 'lucide-react';
+import { Menu, Plus, Video } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../../hooks/useAppDispatch';
 import { setMobileSidebar } from '../../store/ui/ui.slice';
@@ -13,8 +12,6 @@ const TopBar = ({ title }: Props) => {
   const dispatch      = useAppDispatch();
   const navigate      = useNavigate();
   const initial       = user?.name?.charAt(0).toUpperCase() ?? 'U';
-  const inputRef      = useRef<HTMLInputElement>(null);
-  const [focused, setFocused] = useState(false);
 
   return (
     <header
@@ -39,46 +36,7 @@ const TopBar = ({ title }: Props) => {
         )}
       </div>
 
-      {/* Center: search */}
-      <div className="flex-1 max-w-md mx-auto px-4 hidden sm:block">
-        <div className="relative w-full transition-all duration-200 group">
-          <Search
-            size={16}
-            className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-200 pointer-events-none ${focused ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-dim)] group-hover:text-[var(--color-text-muted)]'}`}
-            aria-hidden="true"
-          />
-          <input
-            ref={inputRef}
-            placeholder="Search meetings, tasks, people…"
-            aria-label="Search"
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            className={`
-              w-full h-10 pl-11 pr-14 rounded-full text-sm font-medium
-              bg-[var(--color-surface-2)] border border-[var(--color-border)] transition-all duration-200 outline-none
-              text-[var(--color-text)] placeholder:text-[var(--color-text-dim)]
-              ${focused
-                ? 'border-[var(--color-primary)] shadow-[0_0_0_3px_var(--color-primary-light)]'
-                : 'hover:border-[var(--color-border-strong)]'
-              }
-            `}
-          />
-          <div
-            className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none"
-            aria-hidden="true"
-          >
-            {focused ? (
-              <kbd className="flex items-center text-[10px] text-[var(--color-text-secondary)] bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded px-1.5 py-0.5 font-bold uppercase tracking-wider">
-                ESC
-              </kbd>
-            ) : (
-              <kbd className="flex items-center text-xs text-[var(--color-text-secondary)] font-medium bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded px-1.5 py-0.5 shadow-sm">
-                ⌘K
-              </kbd>
-            )}
-          </div>
-        </div>
-      </div>
+
 
       {/* Right: actions */}
       <div className="flex items-center gap-3 md:gap-4 shrink-0" role="toolbar" aria-label="Header actions">
