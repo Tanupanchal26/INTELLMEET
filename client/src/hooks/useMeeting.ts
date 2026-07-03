@@ -14,7 +14,7 @@ const sanitize = (v: unknown): string =>
 export const useMeeting = (roomId?: string) => {
   const { socket } = useSocket();
   const navigate = useNavigate();
-  const { addParticipant, removeParticipant, setInCall, resetMeeting, updateParticipant } = useMeetingStore();
+  const { addParticipant, removeParticipant, setInCall, resetMeeting, updateParticipant, setParticipants } = useMeetingStore();
   const { appendTranscript } = useAIStore();
 
   useEffect(() => {
@@ -40,12 +40,25 @@ export const useMeeting = (roomId?: string) => {
       });
     // Fix: raise-hand must NOT overwrite isMuted — use a dedicated field or ignore
     const onRaiseHand   = (_data: any) => { /* visual-only; no store mutation needed */ };
+    const onParticipantsList = (list: any[]) => {
+      setParticipants(list.map(p => ({
+        id: sanitize(p.id),
+        name: sanitize(p.name),
+        avatar: p.avatar,
+        socketId: sanitize(p.socketId),
+        isMuted: Boolean(p.isMuted),
+        isVideoOff: Boolean(p.isVideoOff),
+        isScreenSharing: Boolean(p.isScreenSharing),
+        isHost: Boolean(p.isHost),
+      })));
+    };
 
     socket.on('meeting:user-joined',  onUserJoined);
     socket.on('meeting:user-left',    onUserLeft);
     socket.on('ai:transcript',        onTranscript);
     socket.on('meeting:media-state',  onMediaState);
     socket.on('meeting:raise-hand',   onRaiseHand);
+    socket.on('meeting:participants-list', onParticipantsList);
     setInCall(true);
 
     return () => {
@@ -54,6 +67,7 @@ export const useMeeting = (roomId?: string) => {
       socket.off('ai:transcript',        onTranscript);
       socket.off('meeting:media-state',  onMediaState);
       socket.off('meeting:raise-hand',   onRaiseHand);
+      socket.off('meeting:participants-list', onParticipantsList);
     };
   }, [socket, roomId, addParticipant, removeParticipant, setInCall, appendTranscript, updateParticipant]);
 

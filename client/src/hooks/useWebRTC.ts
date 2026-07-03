@@ -26,6 +26,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
 
   // Track whether initial media has been acquired
   const mediaReadyRef = useRef(false);
+  const [isMediaReady, setIsMediaReady] = useState(false);
 
   const { isVideoOff, isMuted, setScreenSharing } = useMeetingStore();
   const socket = getSocket();
@@ -113,6 +114,20 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       }
     };
 
+    pc.onnegotiationneeded = async () => {
+      try {
+        if (pc.signalingState !== 'stable') return;
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit('meeting:signal', {
+          roomId, to: remoteSocketId,
+          signal: { type: 'offer', sdp: pc.localDescription },
+        });
+      } catch (err) {
+        console.error('[WebRTC] Negotiation error:', err);
+      }
+    };
+
     // connectionstatechange is more reliable than iceconnectionstatechange
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed') {
@@ -172,6 +187,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         stream.getVideoTracks().forEach(t => { t.enabled = true; });
         localStreamRef.current = stream;
         mediaReadyRef.current = true;
+        setIsMediaReady(true);
         setLocalStream(new MediaStream(stream.getTracks()));
         return;
       } catch (err: unknown) {
@@ -186,6 +202,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         audioStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
         localStreamRef.current = audioStream;
         mediaReadyRef.current = true;
+        setIsMediaReady(true);
         setLocalStream(new MediaStream(audioStream.getTracks()));
         toast('No camera found — joined with audio only', { icon: '🎤' });
         return;
@@ -200,6 +217,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         if (!isMounted) { videoStream.getTracks().forEach(t => t.stop()); return; }
         localStreamRef.current = videoStream;
         mediaReadyRef.current = true;
+        setIsMediaReady(true);
         setLocalStream(new MediaStream(videoStream.getTracks()));
         toast('No microphone found — joined with video only', { icon: '📷' });
         return;
@@ -211,6 +229,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       // Step 4: all failed
       if (isMounted) {
         mediaReadyRef.current = true;
+        setIsMediaReady(true);
         toast(
           '🚫 Camera & mic blocked. In Chrome: click the 🔒 lock icon → allow Camera & Microphone → refresh.',
           { duration: 8000 }
@@ -240,7 +259,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   // ── Socket signaling ──────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!socket || !roomId) return;
+    if (!socket || !roomId || !isMediaReady) return;
 
     const handleUserJoined = ({ socketId }: { socketId: string }) => {
       if (socketId !== socket.id) createPeerConnection(socketId, true);
@@ -248,10 +267,11 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
 
     const handleSignal = async ({ signal, from }: { signal: any; from: string }) => {
       if (signal.type === 'offer') {
-        // Close stale connection if re-offer arrives (e.g. ICE restart)
-        if (peersRef.current.has(from)) closePeerConnection(from);
-        const pc = createPeerConnection(from, false);
+        let pc = peersRef.current.get(from);
+        if (!pc) pc = createPeerConnection(from, false);
         try {
+          // If we receive an offer while we have a pending local offer, we might need to handle glare,
+          // but for now, rely on standard state machine. If state is not stable, setRemoteDescription might fail.
           await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
           await drainIceCandidates(from, pc);
           const answer = await pc.createAnswer();
@@ -292,7 +312,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       socket.off('meeting:user-left', handleUserLeft);
       socket.emit('meeting:leave', roomId);
     };
-  }, [socket, roomId, createPeerConnection, closePeerConnection, drainIceCandidates]);
+  }, [socket, roomId, createPeerConnection, closePeerConnection, drainIceCandidates, isMediaReady]);
 
   // ── Camera toggle ─────────────────────────────────────────────────────────────
 
