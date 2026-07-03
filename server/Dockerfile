@@ -24,6 +24,9 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 
+# Create logs dir and give appuser ownership
+RUN mkdir -p /app/logs && chown -R appuser:appgroup /app/logs
+
 # Use non-root user
 USER appuser
 

@@ -50,12 +50,12 @@ const logger = winston.createLogger({
   format: isDev ? devFormat : prodFormat,
   exitOnError: false,
   transports,
-  exceptionHandlers: [
-    new winston.transports.File({ filename: path.join(LOGS_DIR, 'exceptions.log') }),
-  ],
-  rejectionHandlers: [
-    new winston.transports.File({ filename: path.join(LOGS_DIR, 'rejections.log') }),
-  ],
+  exceptionHandlers: isDev
+    ? [new winston.transports.File({ filename: path.join(LOGS_DIR, 'exceptions.log') })]
+    : [new winston.transports.Console()],
+  rejectionHandlers: isDev
+    ? [new winston.transports.File({ filename: path.join(LOGS_DIR, 'rejections.log') })]
+    : [new winston.transports.Console()],
 });
 
 export default logger;
