@@ -4,9 +4,11 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION  = "20"
-  NODE_OPTIONS  = "--max-old-space-size=4096"
-  CI            = "false"
+  NODE_VERSION         = "20"
+  NODE_OPTIONS         = "--max-old-space-size=4096"
+  CI                   = "false"
+  VITE_API_BASE_URL    = "https://intellmeet-b009.onrender.com/api/v1"
+  VITE_SOCKET_URL      = "https://intellmeet-b009.onrender.com"
 
 # SPA fallback — all routes serve index.html
 [[redirects]]
