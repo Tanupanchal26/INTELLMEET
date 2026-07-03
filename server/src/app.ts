@@ -8,7 +8,8 @@ const xss = require('xss-clean');
 import hpp from 'hpp';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
-import RedisStore from 'connect-redis';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const RedisStore = require('connect-redis').default ?? require('connect-redis');
 import Redis from 'ioredis';
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
