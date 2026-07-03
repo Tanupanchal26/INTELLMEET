@@ -8,6 +8,8 @@ const xss = require('xss-clean');
 import hpp from 'hpp';
 import cookieParser from 'cookie-parser';
 import session from 'express-session';
+import RedisStore from 'connect-redis';
+import Redis from 'ioredis';
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import client from 'prom-client';
@@ -74,7 +76,12 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
+const redisClient = process.env.REDIS_URL
+  ? new Redis(process.env.REDIS_URL)
+  : null;
+
 app.use(session({
+  store:             redisClient ? new RedisStore({ client: redisClient }) : undefined,
   secret:            config.sessionSecret,
   resave:            false,
   saveUninitialized: false,

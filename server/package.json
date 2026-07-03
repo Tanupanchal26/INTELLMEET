@@ -19,7 +19,14 @@
       "**/tests/**/*.test.ts"
     ],
     "transform": {
-      "^.+\\.tsx?$": ["ts-jest", { "tsconfig": { "strict": false } }]
+      "^.+\\.tsx?$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "strict": false
+          }
+        }
+      ]
     },
     "coverageDirectory": "coverage",
     "coveragePathIgnorePatterns": [
@@ -33,6 +40,7 @@
     "bullmq": "^5.79.2",
     "cloudinary": "^2.5.1",
     "compression": "^1.8.1",
+    "connect-redis": "^9.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",
@@ -45,6 +53,7 @@
     "express-session": "^1.19.0",
     "helmet": "^8.2.0",
     "hpp": "^0.2.3",
+    "ioredis": "^5.11.1",
     "joi": "^18.2.1",
     "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.2",
