@@ -54,7 +54,10 @@ exports.updateTask = asyncHandler(async (req: Request, res: Response) => {
     throw ApiError.forbidden('Not authorised to modify this task');
   }
 
-  const updated = await Task.findByIdAndUpdate(task._id, req.body, { new: true })
+  // Strip fields that must never be patched directly
+  const { tenantId: _t, createdBy: _c, meeting: _m, ...safeBody } = req.body as Record<string, unknown>;
+
+  const updated = await Task.findByIdAndUpdate(task._id, safeBody, { new: true, runValidators: true })
     .populate('assignedTo', 'name email avatar')
     .populate('createdBy', 'name email avatar');
 

@@ -5,6 +5,7 @@ export interface Notification {
   type: string;
   title: string;
   body: string;
+  link?: string;
   isRead: boolean;
   readAt?: string;
   refModel?: string;

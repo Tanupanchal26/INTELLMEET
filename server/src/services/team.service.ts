@@ -81,16 +81,44 @@ const deleteTeam = async (teamId, tenantId, userId) => {
   return teamRepo.deleteById(teamId, tenantId);
 };
 
-// ── Invite member ─────────────────────────────────────────────────────────────
+// ── Invite member by Email (Pending) ──────────────────────────────────────────
+const inviteMemberByEmail = async (teamId, tenantId, actorId, email, role = 'member') => {
+  const team = await teamRepo.findById(teamId, tenantId);
+  assertTeamRole(team, actorId, 'admin');
+  
+  const targetUser = await User.findOne({ email: email.toLowerCase() });
+  if (!targetUser) throw ApiError.notFound('User not found with this email');
+  
+  // Add as pending
+  const updated = await teamRepo.addMember(teamId, tenantId, targetUser._id, role, 'pending');
+  // Notify
+  notifService.notifyTeamInvite(team, targetUser._id, actorId).catch(() => {});
+  return updated;
+};
+
+// ── Invite member (Direct) ────────────────────────────────────────────────────
 const inviteMember = async (teamId, tenantId, actorId, targetUserId, role = 'member') => {
   const team = await teamRepo.findById(teamId, tenantId);
   assertTeamRole(team, actorId, 'admin');
-  const updated = await teamRepo.addMember(teamId, tenantId, targetUserId, role);
+  const updated = await teamRepo.addMember(teamId, tenantId, targetUserId, role, 'active');
   // Add user to default #general channel
   const general = await channelRepo.findBySlug(team._id, 'general');
   if (general) await channelRepo.addMember(general._id, targetUserId);
   // Notify
   notifService.notifyTeamInvite(team, targetUserId, actorId).catch(() => {});
+  return updated;
+};
+
+// ── Accept Invitation ─────────────────────────────────────────────────────────
+const acceptInvitation = async (teamId, tenantId, userId) => {
+  const team = await teamRepo.findById(teamId, tenantId);
+  const member = team.members.find(m => m.user.toString() === userId.toString());
+  if (!member) throw ApiError.notFound('No invitation found for this team');
+  if (member.status === 'active') throw ApiError.badRequest('You are already an active member of this team');
+  
+  const updated = await teamRepo.updateMemberStatus(teamId, tenantId, userId, 'active');
+  const general = await channelRepo.findBySlug(team._id, 'general');
+  if (general) await channelRepo.addMember(general._id, userId);
   return updated;
 };
 
@@ -114,7 +142,9 @@ const updateMemberRole = async (teamId, tenantId, actorId, targetUserId, role) =
 // ── Search Users ──────────────────────────────────────────────────────────────
 const searchUsers = async (tenantId, query, limit = 10) => {
   if (!query || query.trim().length < 2) return [];
-  const regex = new RegExp(query, 'i');
+  // Escape regex special chars to prevent ReDoS
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(escaped, 'i');
   return User.find({
     tenantId,
     $or: [{ name: regex }, { email: regex }]
@@ -124,7 +154,7 @@ const searchUsers = async (tenantId, query, limit = 10) => {
 module.exports = {
   createTeam, getUserTeams, getTeam,
   updateTeam, deleteTeam,
-  inviteMember, removeMember, updateMemberRole,
+  inviteMember, inviteMemberByEmail, acceptInvitation, removeMember, updateMemberRole,
   searchUsers,
 };
 

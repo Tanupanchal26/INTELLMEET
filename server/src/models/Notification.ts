@@ -27,6 +27,7 @@ const notificationSchema = new mongoose.Schema({
   // Polymorphic reference — the resource this notification links to
   refModel: { type: String, enum: ['Meeting', 'Team', 'Channel', 'Message', 'Task'], default: null },
   refId:    { type: mongoose.Schema.Types.ObjectId, default: null },
+  link:     { type: String, default: '' },
 
   isRead:   { type: Boolean, default: false, index: true },
   readAt:   { type: Date, default: null },

@@ -17,6 +17,7 @@ import AIAssistant from '../components/ai/AIAssistant';
 import { useMeetingStore } from '../store/meeting/meeting.store';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { useTranscription } from '../hooks/useTranscription';
+import { useMeeting } from '../hooks/useMeeting';
 import { useAppSelector } from '../hooks/useAppDispatch';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { meetingService } from '../api/meeting.api';

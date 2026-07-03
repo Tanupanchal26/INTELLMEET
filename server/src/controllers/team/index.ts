@@ -7,6 +7,8 @@ const teamService = require('../../services/team.service') as {
   updateTeam: (...args: unknown[]) => Promise<unknown>;
   deleteTeam: (...args: unknown[]) => Promise<void>;
   inviteMember: (...args: unknown[]) => Promise<unknown>;
+  inviteMemberByEmail: (...args: unknown[]) => Promise<unknown>;
+  acceptInvitation: (...args: unknown[]) => Promise<unknown>;
   removeMember: (...args: unknown[]) => Promise<unknown>;
   updateMemberRole: (...args: unknown[]) => Promise<unknown>;
   searchUsers: (...args: unknown[]) => Promise<unknown>;
@@ -42,6 +44,16 @@ exports.deleteTeam = asyncHandler(async (req: Request, res: Response) => {
 exports.inviteMember = asyncHandler(async (req: Request, res: Response) => {
   const team = await teamService.inviteMember(req.params.id, req.tenantId, req.user?._id, (req.body as { userId?: string }).userId, (req.body as { role?: string }).role);
   ApiResponse.ok(res, team, 'Member invited');
+});
+
+exports.inviteMemberByEmail = asyncHandler(async (req: Request, res: Response) => {
+  const team = await teamService.inviteMemberByEmail(req.params.id, req.tenantId, req.user?._id, (req.body as { email?: string }).email, (req.body as { role?: string }).role);
+  ApiResponse.ok(res, team, 'Invitation sent');
+});
+
+exports.acceptInvitation = asyncHandler(async (req: Request, res: Response) => {
+  const team = await teamService.acceptInvitation(req.params.id, req.tenantId, req.user?._id);
+  ApiResponse.ok(res, team, 'Invitation accepted');
 });
 
 exports.removeMember = asyncHandler(async (req: Request, res: Response) => {

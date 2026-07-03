@@ -16,13 +16,23 @@ class TeamRepository extends BaseRepository {
       .sort({ createdAt: -1 });
   }
 
-  async addMember(teamId, tenantId, userId, role = 'member') {
+  async addMember(teamId, tenantId, userId, role = 'member', status = 'active') {
     const team = await Team.findOneAndUpdate(
       { _id: teamId, tenantId, 'members.user': { $ne: userId } },
-      { $push: { members: { user: userId, role } } },
+      { $push: { members: { user: userId, role, status } } },
       { new: true }
     );
     if (!team) throw ApiError.conflict('User is already a member or team not found');
+    return team;
+  }
+
+  async updateMemberStatus(teamId, tenantId, userId, status) {
+    const team = await Team.findOneAndUpdate(
+      { _id: teamId, tenantId, 'members.user': userId },
+      { $set: { 'members.$.status': status } },
+      { new: true }
+    );
+    if (!team) throw ApiError.notFound('Team member not found');
     return team;
   }
 

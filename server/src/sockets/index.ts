@@ -7,6 +7,7 @@ const chatSocket         = require('./chat.socket');
 const meetingSocket      = require('./meeting.socket');
 const notificationSocket = require('./notification.socket');
 const presenceSocket     = require('./presence.socket');
+const teamChatSocket     = require('./teamChat.socket');
 const logger = require('../shared/utils/logger').default;
 
 const sanitizeLog = (val) => String(val ?? '').replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
@@ -50,6 +51,7 @@ io.use(async (socket, next) => {
     meetingSocket(io, socket);
     notificationSocket(io, socket);
     presenceSocket(io, socket);
+    teamChatSocket(io, socket);
 
     socket.on('disconnect', (reason) => {
       logger.info(`[SOCKET] disconnected: ${sanitizeLog(socket.user?.id)} — ${sanitizeLog(reason)}`);

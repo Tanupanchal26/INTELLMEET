@@ -31,6 +31,16 @@ export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps)
     enabled: search.trim().length >= 2,
   });
 
+  const inviteByEmailMutation = useMutation({
+    mutationFn: (email: string) => teamService.inviteByEmail(team._id, email, 'member'),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['team', team._id] });
+      toast.success('Invitation sent to ' + search);
+      setSearch('');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to send invite'),
+  });
+
   const inviteMutation = useMutation({
     mutationFn: (userId: string) => teamService.inviteMember(team._id, userId, 'member'),
     onSuccess: () => {
@@ -82,10 +92,23 @@ export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps)
                 {isFetching ? (
                   <p className="text-xs text-center text-[var(--color-text-muted)] py-2">Searching...</p>
                 ) : searchResults.length === 0 ? (
-                  <p className="text-xs text-center text-[var(--color-text-muted)] py-2">No users found.</p>
+                  <div className="flex flex-col items-center gap-2 py-3">
+                    <p className="text-xs text-[var(--color-text-muted)]">No users found.</p>
+                    {search.includes('@') && (
+                      <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        onClick={() => inviteByEmailMutation.mutate(search)}
+                        disabled={inviteByEmailMutation.isPending}
+                        className="gap-2"
+                      >
+                        <UserPlus size={14} /> Invite {search} by Email
+                      </Button>
+                    )}
+                  </div>
                 ) : (
                   searchResults.map((u: any) => {
-                    const isAlreadyMember = team.members.some(m => m.user._id === u._id);
+                    const existingMember = team.members.find(m => m.user._id === u._id);
                     return (
                       <div key={u._id} className="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--color-bg-secondary)] transition-colors">
                         <div className="flex items-center gap-3">
@@ -101,8 +124,10 @@ export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps)
                             <span className="text-xs text-[var(--color-text-dim)]">{u.email}</span>
                           </div>
                         </div>
-                        {isAlreadyMember ? (
-                          <span className="text-xs font-medium text-[var(--color-text-muted)] px-2">Member</span>
+                        {existingMember ? (
+                          <span className="text-xs font-medium text-[var(--color-text-muted)] px-2">
+                            {existingMember.status === 'pending' ? 'Pending' : 'Member'}
+                          </span>
                         ) : (
                           <Button 
                             variant="secondary" 
@@ -148,6 +173,7 @@ export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps)
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-[var(--color-text)]">{member.user.name}</span>
                         {isSelf && <span className="text-[9px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold uppercase">You</span>}
+                        {member.status === 'pending' && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase">Pending</span>}
                       </div>
                       <span className="text-xs text-[var(--color-text-dim)]">{member.user.email}</span>
                     </div>

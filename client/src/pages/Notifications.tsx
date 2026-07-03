@@ -6,6 +6,7 @@ import { notificationService, type Notification } from '../api/notification.api'
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 import { SkeletonCard } from '../components/common/Loader';
+import { teamService } from '../api/team.api';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 
@@ -86,6 +87,20 @@ const Notifications = () => {
   const del = useMutation({
     mutationFn: (id: string) => notificationService.delete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+
+  const acceptInvite = useMutation({
+    mutationFn: (notif: Notification) => {
+      if (!notif.link?.includes('/teams/')) return Promise.reject('Invalid link');
+      const teamId = notif.link.split('/teams/')[1];
+      return teamService.acceptInvite(teamId).then(() => notificationService.markRead(notif._id));
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['team'] });
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success('Joined team successfully!');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to join team'),
   });
 
   return (
@@ -246,6 +261,16 @@ const Notifications = () => {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-0.5">
+                    {notif.type === 'team_invite' && !notif.isRead && notif.link?.includes('/teams/') && (
+                      <button
+                        onClick={() => acceptInvite.mutate(notif)}
+                        disabled={acceptInvite.isPending}
+                        className="p-1.5 px-3 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-all cursor-pointer mr-2"
+                        aria-label="Accept team invite"
+                      >
+                        Accept
+                      </button>
+                    )}
                     {!notif.isRead && (
                       <button
                         onClick={() => markRead.mutate(notif._id)}

@@ -49,7 +49,10 @@ const getChannel = async (channelId: string): Promise<ChannelPayload | null> => 
 };
 
 module.exports = (io: Server, socket: ChatSocket): void => {
-  socket.on('chat:join', (meetingId: string) => socket.join(`chat:${meetingId}`));
+  socket.on('chat:join', (meetingId: string) => {
+    if (!meetingId || typeof meetingId !== 'string') return;
+    socket.join(`chat:${meetingId}`);
+  });
 
   socket.on('chat:message', async ({ meetingId, content }: { meetingId: string; content: string }) => {
     if (!socket.user?.id || !content?.trim()) return;
@@ -76,9 +79,15 @@ module.exports = (io: Server, socket: ChatSocket): void => {
     });
   });
 
-  socket.on('chat:leave', (meetingId: string) => socket.leave(`chat:${meetingId}`));
+  socket.on('chat:leave', (meetingId: string) => {
+    if (!meetingId || typeof meetingId !== 'string') return;
+    socket.leave(`chat:${meetingId}`);
+  });
 
-  socket.on('channel:join', (channelId: string) => socket.join(`channel:${channelId}`));
+  socket.on('channel:join', (channelId: string) => {
+    if (!channelId || typeof channelId !== 'string') return;
+    socket.join(`channel:${channelId}`);
+  });
 
   socket.on('channel:message', async ({ channelId, content, mentions = [], attachments = [] }: { channelId: string; content: string; mentions?: string[]; attachments?: string[] }) => {
     if (!socket.user?.id || !content?.trim()) return;
@@ -126,72 +135,90 @@ module.exports = (io: Server, socket: ChatSocket): void => {
     socket.to(`channel:${channelId}`).emit('channel:delivery', { messageId, state: 'delivered' });
   });
 
-  socket.on('channel:leave', (channelId: string) => socket.leave(`channel:${channelId}`));
+  socket.on('channel:leave', (channelId: string) => {
+    if (!channelId || typeof channelId !== 'string') return;
+    socket.leave(`channel:${channelId}`);
+  });
 
   socket.on('chat:edit', async ({ messageId, content, channelId, meetingId }: { messageId: string; content: string; channelId?: string; meetingId?: string }) => {
     if (!socket.user?.id || !content?.trim()) return;
-    const msg = await Message.findOneAndUpdate(
-      { _id: messageId, sender: socket.user.id },
-      { content, isEdited: true, editedAt: new Date() },
-      { new: true }
-    ).populate('sender', 'name avatar');
-    if (!msg) return;
-    const room = channelId ? `channel:${channelId}` : `chat:${meetingId}`;
-    io.to(room).emit('chat:edited', msg);
+    try {
+      const msg = await Message.findOneAndUpdate(
+        { _id: messageId, sender: socket.user.id },
+        { content, isEdited: true, editedAt: new Date() },
+        { new: true }
+      ).populate('sender', 'name avatar');
+      if (!msg) return;
+      const room = channelId ? `channel:${channelId}` : `chat:${meetingId}`;
+      io.to(room).emit('chat:edited', msg);
+    } catch {
+      socket.emit('chat:error', { message: 'Failed to edit message' });
+    }
   });
 
   socket.on('chat:delete', async ({ messageId, channelId, meetingId }: { messageId: string; channelId?: string; meetingId?: string }) => {
     if (!socket.user?.id) return;
-    const msg = await Message.findOneAndUpdate(
-      { _id: messageId, sender: socket.user.id },
-      { isDeleted: true, content: '[Message deleted]' },
-      { new: true }
-    );
-    if (!msg) return;
-    const room = channelId ? `channel:${channelId}` : `chat:${meetingId}`;
-    io.to(room).emit('chat:deleted', { messageId });
+    try {
+      const msg = await Message.findOneAndUpdate(
+        { _id: messageId, sender: socket.user.id },
+        { isDeleted: true, content: '[Message deleted]' },
+        { new: true }
+      );
+      if (!msg) return;
+      const room = channelId ? `channel:${channelId}` : `chat:${meetingId}`;
+      io.to(room).emit('chat:deleted', { messageId });
+    } catch {
+      socket.emit('chat:error', { message: 'Failed to delete message' });
+    }
   });
 
   socket.on('chat:reply', async ({ parentId, channelId, meetingId, content }: { parentId: string; channelId?: string; meetingId?: string; content: string }) => {
     if (!socket.user?.id || !content?.trim() || !parentId) return;
-    const [message] = await Promise.all([
-      Message.create({
-        channel: channelId || null,
-        meeting: meetingId || null,
-        parentId,
-        sender: socket.user.id,
-        content,
-        type: 'text',
-      }),
-      Message.findByIdAndUpdate(parentId, { $inc: { threadCount: 1 } }),
-    ]);
-    const populated = await message.populate('sender', 'name avatar');
-    const room = channelId ? `channel:${channelId}` : `chat:${meetingId}`;
-    io.to(room).emit('chat:reply', populated);
+    try {
+      const [message] = await Promise.all([
+        Message.create({
+          channel: channelId || null,
+          meeting: meetingId || null,
+          parentId,
+          sender: socket.user.id,
+          content,
+          type: 'text',
+        }),
+        Message.findByIdAndUpdate(parentId, { $inc: { threadCount: 1 } }),
+      ]);
+      const populated = await message.populate('sender', 'name avatar');
+      const room = channelId ? `channel:${channelId}` : `chat:${meetingId}`;
+      io.to(room).emit('chat:reply', populated);
+    } catch {
+      socket.emit('chat:error', { message: 'Failed to send reply' });
+    }
   });
 
   socket.on('chat:react', async ({ messageId, emoji, channelId, meetingId }: { messageId: string; emoji: string; channelId?: string; meetingId?: string }) => {
     if (!socket.user?.id) return;
+    try {
+      const pulled = await Message.findOneAndUpdate(
+        { _id: messageId, 'reactions.emoji': emoji, 'reactions.users': socket.user.id },
+        { $pull: { 'reactions.$.users': socket.user.id } },
+        { new: true }
+      );
 
-    const pulled = await Message.findOneAndUpdate(
-      { _id: messageId, 'reactions.emoji': emoji, 'reactions.users': socket.user.id },
-      { $pull: { 'reactions.$.users': socket.user.id } },
-      { new: true }
-    );
+      const updated = pulled ?? await Message.findOneAndUpdate(
+        { _id: messageId, 'reactions.emoji': emoji },
+        { $addToSet: { 'reactions.$.users': socket.user.id } },
+        { new: true }
+      ) ?? await Message.findOneAndUpdate(
+        { _id: messageId },
+        { $push: { reactions: { emoji, users: [socket.user.id] } } },
+        { new: true }
+      );
 
-    const updated = pulled ?? await Message.findOneAndUpdate(
-      { _id: messageId, 'reactions.emoji': emoji },
-      { $addToSet: { 'reactions.$.users': socket.user.id } },
-      { new: true }
-    ) ?? await Message.findOneAndUpdate(
-      { _id: messageId },
-      { $push: { reactions: { emoji, users: [socket.user.id] } } },
-      { new: true }
-    );
-
-    if (!updated) return;
-    const room = channelId ? `channel:${channelId}` : `chat:${meetingId}`;
-    io.to(room).emit('chat:reaction', { messageId, reactions: updated.reactions });
+      if (!updated) return;
+      const room = channelId ? `channel:${channelId}` : `chat:${meetingId}`;
+      io.to(room).emit('chat:reaction', { messageId, reactions: updated.reactions });
+    } catch {
+      socket.emit('chat:error', { message: 'Failed to react to message' });
+    }
   });
 };
 

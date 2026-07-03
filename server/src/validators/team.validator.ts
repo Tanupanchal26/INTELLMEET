@@ -42,6 +42,14 @@ export const inviteMember = {
   }),
 };
 
+export const inviteByEmail = {
+  params: Joi.object({ id: mongoId.required() }),
+  body: Joi.object({
+    email: Joi.string().email().required(),
+    role:  Joi.string().valid('admin', 'member', 'guest').default('member'),
+  }),
+};
+
 export const updateMemberRole = {
   params: Joi.object({ id: mongoId.required(), userId: mongoId.required() }),
   body: Joi.object({

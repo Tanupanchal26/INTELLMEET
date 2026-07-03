@@ -89,6 +89,8 @@ router.get('/teams/:id',                             validate(TV.teamParam),   t
 router.put('/teams/:id',                             validate(TV.updateTeam), teamCtrl.updateTeam);
 router.delete('/teams/:id',                          validate(TV.teamParam),  teamCtrl.deleteTeam);
 router.post('/teams/:id/members',                    validate(TV.inviteMember),    teamCtrl.inviteMember);
+router.post('/teams/:id/invite',                     validate(TV.inviteByEmail),   teamCtrl.inviteMemberByEmail);
+router.post('/teams/:id/join',                       validate(TV.teamParam),       teamCtrl.acceptInvitation);
 router.delete('/teams/:id/members/:userId', authorize(ROLES.ADMIN), validate(TV.memberParam), teamCtrl.removeMember);
 router.patch('/teams/:id/members/:userId/role',      validate(TV.updateMemberRole), teamCtrl.updateMemberRole);
 router.post('/teams/:teamId/channels',               validate(CV.createChannel),   channelCtrl.createChannel);
@@ -119,6 +121,14 @@ router.use('/chat', protect);
 router.get('/chat/:meetingId',    chatCtrl.getMessages);
 router.post('/chat/:meetingId',   chatCtrl.sendMessage);
 router.delete('/chat/:messageId', chatCtrl.deleteMessage);
+
+// ── Team Chat ─────────────────────────────────────────────────────────────────
+const teamChatCtrl = require('../../controllers/teamChat') as any;
+router.get('/teams/:teamId/chat',                      teamChatCtrl.getMessages);
+router.post('/teams/:teamId/chat',                     teamChatCtrl.sendMessage);
+router.put('/teams/:teamId/chat/:messageId',           teamChatCtrl.editMessage);
+router.delete('/teams/:teamId/chat/:messageId',        teamChatCtrl.deleteMessage);
+router.post('/teams/:teamId/chat/:messageId/react',    teamChatCtrl.toggleReaction);
 
 // ── AI ────────────────────────────────────────────────────────────────────────
 router.use('/ai', protect, scopeTenant('tenantId'), aiLimiter);

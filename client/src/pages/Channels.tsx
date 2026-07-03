@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Hash, Lock, Plus, Send, Users, ChevronLeft, Trash2, Circle } from 'lucide-react';
+import { Hash, Lock, Plus, Send, Users, ChevronLeft, Trash2, Circle, MessageSquare } from 'lucide-react';
 import { teamService, type Team, type Channel } from '../api/team.api';
 import { channelService } from '../api/channel.api';
 import { useAppSelector } from '../hooks/useAppDispatch';
@@ -14,6 +14,7 @@ import Modal from '../components/common/Modal';
 import Loader from '../components/common/Loader';
 import { ChannelHeader } from '../components/channels/ChannelHeader';
 import { TeamMembersModal } from '../components/team/TeamMembersModal';
+import { TeamChatView } from '../components/team/TeamChatView';
 
 import { MessageList } from '../features/chat/components/MessageList';
 import { MessageInput } from '../features/chat/components/MessageInput';
@@ -214,6 +215,7 @@ const Channels = () => {
   });
   const [showCreate, setShowCreate] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [showTeamChat, setShowTeamChat] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', type: 'public' as 'public' | 'private' | 'announcement' });
 
   // Local state for when loaded via `/channels` (no URL parameters)
@@ -279,6 +281,7 @@ const Channels = () => {
   });
 
   const handleChannelClick = (ch: Channel) => {
+    setShowTeamChat(false);
     if (teamId) {
       navigate(toChannel(teamId, ch._id));
     } else {
@@ -327,6 +330,20 @@ const Channels = () => {
         )}
 
         <div className="flex-1 overflow-y-auto p-2 scrollbar-thin">
+          {/* Team Chat entry */}
+          <button
+            onClick={() => setShowTeamChat(true)}
+            className={clsx(
+              'flex items-center gap-2 w-full px-3 py-2 rounded-xl text-[13px] transition-all text-left border cursor-pointer mb-2',
+              showTeamChat
+                ? 'bg-indigo-50 text-indigo-750 border-indigo-150 font-bold shadow-sm'
+                : 'text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] border-transparent'
+            )}
+          >
+            <MessageSquare size={13} />
+            <span className="truncate flex-1">Team Chat</span>
+          </button>
+
           <div className="flex items-center justify-between px-2.5 py-1.5 mb-1">
             <span className="text-[10px] font-bold text-[var(--color-text-secondary)] uppercase tracking-wider">Channels</span>
             {isAdmin && (
@@ -377,7 +394,9 @@ const Channels = () => {
 
       {/* Main */}
       <main className="flex-1 flex flex-col min-w-0 bg-[var(--color-bg)]/5">
-        {activeChannel ? (
+        {showTeamChat && activeTeamId ? (
+          <TeamChatView teamId={activeTeamId} teamName={team?.name ?? 'Team'} />
+        ) : activeChannel ? (
           <ChannelView channel={activeChannel} />
         ) : (
           <div className="flex flex-col items-center justify-center flex-1 gap-3 text-center opacity-70">

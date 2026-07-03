@@ -3,7 +3,6 @@ const Recording  = require('../models/Recording');
 const Meeting    = require('../models/Meeting');
 const ApiError   = require('../utils/ApiError');
 const cloudinary = require('../config/cloudinary');
-const { Readable } = require('stream');
 const logger     = require('../shared/utils/logger').default;
 
 exports.uploadRecording = async (meetingId, tenantId, ownerId, buffer, sizeBytes) => {
@@ -16,25 +15,28 @@ exports.uploadRecording = async (meetingId, tenantId, ownerId, buffer, sizeBytes
       async (error, result) => {
         if (error) return reject(ApiError.internal('Cloudinary upload failed'));
 
-        const recording = await Recording.create({
-          tenantId,
-          meetingId,
-          ownerId,
-          url:       result.secure_url,
-          status:    'ready',
-          duration:  Math.round(result.duration || 0),
-          sizeBytes: sizeBytes || result.bytes,
-        });
-
-        resolve(recording);
+        try {
+          const recording = await Recording.create({
+            tenantId,
+            meetingId,
+            ownerId,
+            url:       result.secure_url,
+            status:    'ready',
+            duration:  Math.round(result.duration || 0),
+            sizeBytes: sizeBytes || result.bytes,
+          });
+          resolve(recording);
+        } catch (dbErr) {
+          reject(dbErr);
+        }
       }
     );
 
-    const readable = new Readable();
-    readable._read = () => {};
-    readable.push(buffer);
-    readable.push(null);
-    readable.pipe(stream);
+    // Use PassThrough to avoid Readable._read override anti-pattern
+    const { PassThrough } = require('stream');
+    const pass = new PassThrough();
+    pass.pipe(stream);
+    pass.end(buffer);
   });
 };
 

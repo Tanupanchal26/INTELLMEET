@@ -1,0 +1,332 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Send, MessageSquare } from 'lucide-react';
+import { teamChatService, type TeamMessage } from '../../api/team.api';
+import { useAppSelector } from '../../hooks/useAppDispatch';
+import { useSocket, safeEmit } from '../../hooks/useSocket';
+import { TypingIndicator } from '../common/TypingIndicator';
+import { clsx } from 'clsx';
+
+const EMOJIS = ['👍', '❤️', '😂', '🎉', '🔥', '👀'];
+
+interface TeamChatViewProps {
+  teamId: string;
+  teamName: string;
+}
+
+const formatTime = (iso: string) => {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const formatDate = (iso: string) => {
+  const d = new Date(iso);
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+export const TeamChatView = ({ teamId, teamName }: TeamChatViewProps) => {
+  const user       = useAppSelector((s) => s.auth.user);
+  const { socket } = useSocket();
+
+  const [messages,    setMessages]    = useState<TeamMessage[]>([]);
+  const [content,     setContent]     = useState('');
+  const [typingUsers, setTypingUsers] = useState<{ userId: string; name: string }[]>([]);
+  const [showEmoji,   setShowEmoji]   = useState(false);
+
+  const bottomRef    = useRef<HTMLDivElement>(null);
+  const typingTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef  = useRef(false);
+
+  /* ── Fetch history from REST ── */
+  const { isLoading } = useQuery({
+    queryKey: ['team-chat', teamId],
+    queryFn: () =>
+      teamChatService.getMessages(teamId).then((r: any) => {
+        const msgs: TeamMessage[] = r.data?.data ?? r.data ?? [];
+        setMessages(msgs);
+        return msgs;
+      }),
+    staleTime: Infinity,
+  });
+
+  /* ── Socket room join/leave ── */
+  useEffect(() => {
+    if (!socket || !teamId) return;
+
+    socket.emit('team-chat:join', teamId);
+
+    const onMessage  = (msg: TeamMessage) => {
+      setMessages(prev => {
+        // Avoid duplicates
+        if (prev.some(m => m._id === msg._id)) return prev;
+        return [...prev, msg];
+      });
+    };
+    const onTyping   = ({ userId: uid, name, isTyping }: { userId: string; name: string; isTyping: boolean }) => {
+      if (uid === user?.id) return;
+      setTypingUsers(prev =>
+        isTyping
+          ? prev.some(t => t.userId === uid) ? prev : [...prev, { userId: uid, name }]
+          : prev.filter(t => t.userId !== uid)
+      );
+    };
+    const onReaction = ({ messageId, reactions }: { messageId: string; reactions: any[] }) => {
+      setMessages(prev => prev.map(m => m._id === messageId ? { ...m, reactions } : m));
+    };
+    const onDelivery = ({ messageId, state }: { messageId: string; state: any }) => {
+      setMessages(prev => prev.map(m => m._id === messageId ? { ...m, delivery: state } : m));
+    };
+
+    socket.on('team-chat:message',  onMessage);
+    socket.on('team-chat:typing',   onTyping);
+    socket.on('team-chat:reaction', onReaction);
+    socket.on('team-chat:delivery', onDelivery);
+
+    return () => {
+      socket.off('team-chat:message',  onMessage);
+      socket.off('team-chat:typing',   onTyping);
+      socket.off('team-chat:reaction', onReaction);
+      socket.off('team-chat:delivery', onDelivery);
+      socket.emit('team-chat:leave',   teamId);
+    };
+  }, [socket, teamId, user?.id]);
+
+  /* ── Auto-scroll ── */
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages.length]);
+
+  /* ── Typing indicator ── */
+  const handleTyping = useCallback(() => {
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      safeEmit('team-chat:typing', { teamId, isTyping: true });
+    }
+    if (typingTimer.current) clearTimeout(typingTimer.current);
+    typingTimer.current = setTimeout(() => {
+      isTypingRef.current = false;
+      safeEmit('team-chat:typing', { teamId, isTyping: false });
+    }, 2000);
+  }, [teamId]);
+
+  /* ── Send message ── */
+  const handleSend = useCallback(() => {
+    const text = content.trim();
+    if (!text || !user) return;
+
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      safeEmit('team-chat:typing', { teamId, isTyping: false });
+      if (typingTimer.current) clearTimeout(typingTimer.current);
+    }
+
+    // Optimistic message
+    const tempId = `temp_${Date.now()}`;
+    const optimistic: TeamMessage = {
+      _id: tempId,
+      team: teamId,
+      content: text,
+      sender: { _id: user.id, name: user.name },
+      type: 'text',
+      attachments: [],
+      reactions: [],
+      isEdited: false,
+      isDeleted: false,
+      createdAt: new Date().toISOString(),
+      delivery: 'sending',
+    };
+    setMessages(prev => [...prev, optimistic]);
+    setContent('');
+
+    safeEmit('team-chat:message', { teamId, content: text });
+  }, [content, user, teamId]);
+
+  /* ── React ── */
+  const handleReact = useCallback((msgId: string, emoji: string) => {
+    safeEmit('team-chat:react', { teamId, messageId: msgId, emoji });
+    setShowEmoji(false);
+  }, [teamId]);
+
+  const typingNames = typingUsers.map(t => t.name);
+
+  /* ── Group messages by date ── */
+  let lastDate = '';
+
+  return (
+    <div className="flex flex-col flex-1 h-full min-h-0 bg-[var(--color-bg)]/10">
+      {/* Header */}
+      <div className="px-5 py-3 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]/20 flex items-center gap-3 flex-shrink-0">
+        <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+          <MessageSquare size={16} />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-[var(--color-text)]">{teamName} Chat</p>
+          <p className="text-[10px] text-[var(--color-text-dim)]">Team conversation</p>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-1 min-h-0 scrollbar-thin">
+        {isLoading && (
+          <div className="flex items-center justify-center py-10">
+            <div className="w-6 h-6 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+          </div>
+        )}
+
+        {!isLoading && messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center flex-1 gap-3 py-16 opacity-70">
+            <MessageSquare size={36} className="text-[var(--color-text-dim)]" />
+            <p className="text-sm text-[var(--color-text-muted)] font-semibold">No messages yet</p>
+            <p className="text-xs text-[var(--color-text-dim)]">Start a conversation with your team!</p>
+          </div>
+        )}
+
+        {messages.filter(m => !m.isDeleted).map((msg) => {
+          const isMine   = msg.sender._id === user?.id;
+          const dateStr  = formatDate(msg.createdAt);
+          const showDate = dateStr !== lastDate;
+          if (showDate) lastDate = dateStr;
+
+          return (
+            <div key={msg._id}>
+              {showDate && (
+                <div className="flex items-center gap-3 my-4">
+                  <div className="flex-1 h-px bg-[var(--color-border)]" />
+                  <span className="text-[10px] font-bold text-[var(--color-text-dim)] uppercase tracking-wider">{dateStr}</span>
+                  <div className="flex-1 h-px bg-[var(--color-border)]" />
+                </div>
+              )}
+              <div className={clsx('flex items-end gap-2.5 mb-2', isMine ? 'flex-row-reverse' : 'flex-row')}>
+                {/* Avatar */}
+                {!isMine && (
+                  <div className="flex-shrink-0">
+                    {msg.sender.avatar ? (
+                      <img src={msg.sender.avatar} alt={msg.sender.name} className="w-7 h-7 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[10px] font-bold">
+                        {msg.sender.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Bubble */}
+                <div className={clsx(
+                  'max-w-[70%] rounded-2xl px-3.5 py-2 shadow-sm',
+                  isMine
+                    ? 'bg-indigo-600 text-white rounded-br-md'
+                    : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text)] border border-[var(--color-border)] rounded-bl-md'
+                )}>
+                  {!isMine && (
+                    <p className="text-[10px] font-bold mb-0.5 text-indigo-600">{msg.sender.name}</p>
+                  )}
+                  <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+                  <div className={clsx(
+                    'flex items-center gap-1.5 mt-1',
+                    isMine ? 'justify-end' : 'justify-start'
+                  )}>
+                    <span className={clsx(
+                      'text-[9px]',
+                      isMine ? 'text-white/60' : 'text-[var(--color-text-dim)]'
+                    )}>
+                      {formatTime(msg.createdAt)}
+                    </span>
+                    {msg.isEdited && (
+                      <span className={clsx('text-[9px]', isMine ? 'text-white/50' : 'text-[var(--color-text-dim)]')}>edited</span>
+                    )}
+                    {isMine && msg.delivery === 'sending' && (
+                      <span className="text-[9px] text-white/50">sending…</span>
+                    )}
+                  </div>
+
+                  {/* Reactions */}
+                  {msg.reactions && msg.reactions.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {msg.reactions.map((r, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleReact(msg._id, r.emoji)}
+                          className={clsx(
+                            'text-xs px-1.5 py-0.5 rounded-full border transition-colors cursor-pointer',
+                            r.users.includes(user?.id || '')
+                              ? 'bg-indigo-100 border-indigo-300 text-indigo-700'
+                              : 'bg-[var(--color-bg-secondary)] border-[var(--color-border)] text-[var(--color-text-secondary)]'
+                          )}
+                        >
+                          {r.emoji} {r.users.length}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Typing indicator */}
+      <TypingIndicator names={typingNames} />
+
+      {/* Input */}
+      <div className="px-6 py-4 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)]/20 flex-shrink-0">
+        <div className="flex items-end gap-3 bg-[var(--color-bg-tertiary)]/70 border border-[var(--color-border)] focus-within:border-[var(--color-border-strong)] focus-within:shadow-[0_0_0_3px_rgba(66,67,65,0.08)] rounded-2xl px-4 py-3 transition-all">
+          <textarea
+            value={content}
+            onChange={(e) => {
+              setContent(e.target.value);
+              handleTyping();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder={`Message ${teamName}...`}
+            rows={1}
+            className="flex-1 bg-transparent text-[13px] text-[var(--color-text)] placeholder-[var(--color-text-dim)] resize-none outline-none max-h-32"
+          />
+          <button
+            onClick={handleSend}
+            disabled={!content.trim()}
+            className="p-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 transition-all flex-shrink-0 shadow-[0_2px_8px_rgba(99,102,241,0.2)] cursor-pointer"
+          >
+            <Send size={13} />
+          </button>
+          {/* Emoji picker */}
+          <div className="relative">
+            <button
+              onClick={() => setShowEmoji(!showEmoji)}
+              className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors text-xs cursor-pointer"
+            >
+              😊
+            </button>
+            {showEmoji && (
+              <div className="absolute bottom-8 left-0 flex gap-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-2.5 py-1.5 shadow-lg z-20">
+                {EMOJIS.map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => {
+                      setContent(content + e);
+                      setShowEmoji(false);
+                    }}
+                    className="text-base hover:scale-125 transition-transform cursor-pointer"
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

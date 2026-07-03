@@ -6,6 +6,7 @@ const { ROLES } = require('../constants');
 const memberSchema = new mongoose.Schema({
   user:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   role:      { type: String, enum: ['owner', 'admin', 'member', 'guest'], default: 'member' },
+  status:    { type: String, enum: ['pending', 'active'], default: 'active' },
   joinedAt:  { type: Date, default: Date.now },
 }, { _id: false });
 
