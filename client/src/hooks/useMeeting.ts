@@ -6,6 +6,7 @@ import { meetingService } from '../api/meeting.api';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../constants';
+import { getSocket } from '../utils/socket';
 
 /** Strip control characters to prevent log/XSS injection from socket payloads */
 const sanitize = (v: unknown): string =>
@@ -38,7 +39,6 @@ export const useMeeting = (roomId?: string) => {
         isVideoOff:      Boolean(isVideoOff),
         isScreenSharing: Boolean(isScreenSharing),
       });
-    // Fix: raise-hand must NOT overwrite isMuted — use a dedicated field or ignore
     const onRaiseHand   = (_data: any) => { /* visual-only; no store mutation needed */ };
     const onParticipantsList = (list: any[]) => {
       setParticipants(list.map(p => ({
@@ -52,6 +52,11 @@ export const useMeeting = (roomId?: string) => {
         isHost: Boolean(p.isHost),
       })));
     };
+    const onMeetingEndedByHost = () => {
+      resetMeeting();
+      toast('Meeting has ended.', { icon: '🔴', duration: 4000 });
+      navigate(ROUTES.LOBBY);
+    };
 
     socket.on('meeting:user-joined',  onUserJoined);
     socket.on('meeting:user-left',    onUserLeft);
@@ -59,6 +64,7 @@ export const useMeeting = (roomId?: string) => {
     socket.on('meeting:media-state',  onMediaState);
     socket.on('meeting:raise-hand',   onRaiseHand);
     socket.on('meeting:participants-list', onParticipantsList);
+    socket.on('meeting:ended-by-host', onMeetingEndedByHost);
     setInCall(true);
 
     return () => {
@@ -68,8 +74,9 @@ export const useMeeting = (roomId?: string) => {
       socket.off('meeting:media-state',  onMediaState);
       socket.off('meeting:raise-hand',   onRaiseHand);
       socket.off('meeting:participants-list', onParticipantsList);
+      socket.off('meeting:ended-by-host', onMeetingEndedByHost);
     };
-  }, [socket, roomId, addParticipant, removeParticipant, setInCall, appendTranscript, updateParticipant]);
+  }, [socket, roomId, addParticipant, removeParticipant, setInCall, appendTranscript, updateParticipant, resetMeeting, navigate]);
 
   const leaveMeeting = async (meetingId?: string) => {
     socket?.emit('meeting:leave', roomId);
@@ -79,5 +86,13 @@ export const useMeeting = (roomId?: string) => {
     navigate(ROUTES.LOBBY);
   };
 
-  return { leaveMeeting };
+  const endMeeting = (meetingId?: string) => {
+    const s = getSocket();
+    if (s?.connected && roomId) {
+      s.emit('meeting:end', { roomId });
+    }
+    if (meetingId) meetingService.end(meetingId).catch(() => {});
+  };
+
+  return { leaveMeeting, endMeeting };
 };

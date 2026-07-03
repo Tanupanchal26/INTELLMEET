@@ -1,4 +1,4 @@
-import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Circle, StopCircle, PhoneOff, Hand, Smile } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Circle, StopCircle, PhoneOff, Hand, Smile, LogOut } from 'lucide-react';
 import { useMeetingStore } from '../../store/meeting/meeting.store';
 import { useMeeting } from '../../hooks/useMeeting';
 import { useRecording } from '../../hooks/useRecording';
@@ -7,6 +7,7 @@ import { clsx } from 'clsx';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useState } from 'react';
+import { useAppSelector } from '../../hooks/useAppDispatch';
 
 interface ControlBtnProps {
   icon: React.ElementType;
@@ -52,15 +53,20 @@ interface ControlsProps {
 
 const Controls = ({ localStream, startScreenShare, stopScreenShare, stopAllTracks }: ControlsProps) => {
   const { id: meetingId } = useParams();
+  const user = useAppSelector((s) => s.auth.user);
   const {
     isMuted, isVideoOff, isScreenSharing, isRecording,
     toggleMute, toggleVideo,
     currentMeeting,
   } = useMeetingStore();
-  const { leaveMeeting } = useMeeting(currentMeeting?.roomId);
+  const { leaveMeeting, endMeeting } = useMeeting(currentMeeting?.roomId);
   const { startRecording, stopRecording } = useRecording(meetingId ?? '', localStream ?? null);
   const [handRaised, setHandRaised]   = useState(false);
   const [showReactions, setShowReactions] = useState(false);
+
+  const isHost = user?.id && currentMeeting?.host
+    ? user.id === currentMeeting.host
+    : false;
 
   const handleMic = () => {
     toggleMute();
@@ -109,6 +115,11 @@ const Controls = ({ localStream, startScreenShare, stopScreenShare, stopAllTrack
   const handleLeave = async () => {
     stopAllTracks?.();
     await leaveMeeting(meetingId);
+  };
+
+  const handleEnd = () => {
+    stopAllTracks?.();
+    endMeeting(meetingId);
   };
 
   return (
@@ -192,13 +203,30 @@ const Controls = ({ localStream, startScreenShare, stopScreenShare, stopAllTrack
 
         <div className="w-px h-8 bg-[var(--color-border)] mx-0.5" />
 
-        {/* Leave */}
-        <ControlBtn
-          icon={PhoneOff}
-          label="Leave"
-          onClick={handleLeave}
-          danger
-        />
+        {/* Leave / End */}
+        {isHost ? (
+          <>
+            <ControlBtn
+              icon={LogOut}
+              label="Leave"
+              onClick={handleLeave}
+              danger
+            />
+            <ControlBtn
+              icon={PhoneOff}
+              label="End"
+              onClick={handleEnd}
+              danger
+            />
+          </>
+        ) : (
+          <ControlBtn
+            icon={PhoneOff}
+            label="Leave"
+            onClick={handleLeave}
+            danger
+          />
+        )}
       </div>
     </div>
   );

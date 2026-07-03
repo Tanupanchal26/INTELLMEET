@@ -35,6 +35,14 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
     if (!isValidId(roomId)) return;
     try {
       const user = getUser();
+
+      // Block joining an ended meeting
+      const existingMeeting = await Meeting.findOne({ roomId });
+      if (existingMeeting?.status === 'ended') {
+        socket.emit('meeting:ended-by-host', { roomId });
+        return;
+      }
+
       socket.join(`meeting:${roomId}`);
       socket.join(`chat:${roomId}`);
 
@@ -227,6 +235,52 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
       });
     } catch (err) {
       logger.error(`[SOCKET] transcript-chunk error: ${(err as Error).message.replace(/[\r\n]/g, ' ')}`);
+    }
+  });
+
+  // ── End Meeting (host only) ──────────────────────────────────────────────
+  socket.on('meeting:end', async ({ roomId }: { roomId: unknown }) => {
+    if (!isValidId(roomId)) return;
+    try {
+      const user = getUser();
+      const meeting = await Meeting.findOne({ roomId });
+      if (!meeting) return;
+      if (meeting.host.toString() !== user.id) {
+        socket.emit('meeting:error', { message: 'Only the host can end the meeting' });
+        return;
+      }
+      if (meeting.status === 'ended') return;
+
+      await Meeting.findOneAndUpdate(
+        { roomId },
+        { $set: { status: 'ended', endedAt: new Date() } }
+      );
+
+      // Notify all participants before disconnecting them
+      io.to(`meeting:${roomId}`).emit('meeting:ended-by-host', { roomId });
+
+      // Disconnect all sockets from the room
+      const room = io.sockets.adapter.rooms.get(`meeting:${roomId}`);
+      if (room) {
+        for (const sid of room) {
+          const s = io.sockets.sockets.get(sid);
+          if (s) {
+            s.leave(`meeting:${roomId}`);
+            s.leave(`chat:${roomId}`);
+          }
+        }
+      }
+
+      // Trigger AI pipeline
+      const meetingId = meeting._id.toString();
+      io.to(`meeting:${meetingId}`).emit('ai:processing', { step: 'summary' });
+      const [summary, actionItems] = await Promise.all([
+        aiService.summarize(meetingId),
+        aiService.getActionItems(meetingId),
+      ]);
+      io.to(`meeting:${meetingId}`).emit('ai:summary-ready', { summary, actionItems });
+    } catch (err) {
+      logger.error(`[SOCKET] meeting:end error: ${(err as Error).message}`);
     }
   });
 
