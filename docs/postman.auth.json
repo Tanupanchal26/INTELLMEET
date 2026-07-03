@@ -1,0 +1,183 @@
+{
+  "info": {
+    "name": "IntellMeet — Auth API",
+    "_postman_id": "intellmeet-auth-v1",
+    "description": "Complete authentication module for IntellMeet",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",      "value": "http://localhost:5000/api/v1" },
+    { "key": "accessToken",  "value": "" },
+    { "key": "resetToken",   "value": "" },
+    { "key": "verifyToken",  "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Signup",
+      "request": {
+        "method": "POST",
+        "url":    "{{baseUrl}}/auth/signup",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Jane Smith\",\n  \"email\": \"jane@intellmeet.com\",\n  \"password\": \"MyP@ssw0rd!\",\n  \"role\": \"employee\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": {
+          "exec": [
+            "const res = pm.response.json();",
+            "if (res.data?.accessToken) {",
+            "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+            "  pm.test('Signup successful', () => pm.response.to.have.status(201));",
+            "}"
+          ]
+        }
+      }]
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "url":    "{{baseUrl}}/auth/login",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"jane@intellmeet.com\",\n  \"password\": \"MyP@ssw0rd!\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": {
+          "exec": [
+            "const res = pm.response.json();",
+            "if (res.data?.accessToken) {",
+            "  pm.collectionVariables.set('accessToken', res.data.accessToken);",
+            "  pm.test('Login successful', () => pm.response.to.have.status(200));",
+            "}"
+          ]
+        }
+      }]
+    },
+    {
+      "name": "Get Me",
+      "request": {
+        "method": "GET",
+        "url":    "{{baseUrl}}/auth/me",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": ["pm.test('Got profile', () => pm.response.to.have.status(200));"] }
+      }]
+    },
+    {
+      "name": "Refresh Token",
+      "request": {
+        "method": "POST",
+        "url":    "{{baseUrl}}/auth/refresh-token",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{}" }
+      },
+      "event": [{
+        "listen": "test",
+        "script": {
+          "exec": [
+            "const res = pm.response.json();",
+            "if (res.data?.accessToken) pm.collectionVariables.set('accessToken', res.data.accessToken);",
+            "pm.test('Token refreshed', () => pm.response.to.have.status(200));"
+          ]
+        }
+      }]
+    },
+    {
+      "name": "Change Password",
+      "request": {
+        "method": "POST",
+        "url":    "{{baseUrl}}/auth/change-password",
+        "header": [
+          { "key": "Content-Type",  "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"currentPassword\": \"MyP@ssw0rd!\",\n  \"newPassword\":     \"NewP@ssw0rd!\",\n  \"confirmPassword\": \"NewP@ssw0rd!\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": ["pm.test('Password changed', () => pm.response.to.have.status(200));"] }
+      }]
+    },
+    {
+      "name": "Forgot Password",
+      "request": {
+        "method": "POST",
+        "url":    "{{baseUrl}}/auth/forgot-password",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"jane@intellmeet.com\"\n}" }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": ["pm.test('Always 200', () => pm.response.to.have.status(200));"] }
+      }]
+    },
+    {
+      "name": "Reset Password",
+      "request": {
+        "method": "POST",
+        "url":    "{{baseUrl}}/auth/reset-password/{{resetToken}}",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\":        \"ResetP@ss1!\",\n  \"confirmPassword\": \"ResetP@ss1!\"\n}"
+        }
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": ["pm.test('Password reset', () => pm.response.to.have.status(200));"] }
+      }]
+    },
+    {
+      "name": "Verify Email",
+      "request": {
+        "method": "GET",
+        "url":    "{{baseUrl}}/auth/verify-email/{{verifyToken}}"
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": ["pm.test('Email verified', () => pm.response.to.have.status(200));"] }
+      }]
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "POST",
+        "url":    "{{baseUrl}}/auth/logout",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+      },
+      "event": [{
+        "listen": "test",
+        "script": {
+          "exec": [
+            "pm.collectionVariables.set('accessToken', '');",
+            "pm.test('Logged out', () => pm.response.to.have.status(200));"
+          ]
+        }
+      }]
+    },
+    {
+      "name": "Logout All Sessions",
+      "request": {
+        "method": "POST",
+        "url":    "{{baseUrl}}/auth/logout-all",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }]
+      },
+      "event": [{
+        "listen": "test",
+        "script": { "exec": ["pm.test('All sessions terminated', () => pm.response.to.have.status(200));"] }
+      }]
+    }
+  ]
+}

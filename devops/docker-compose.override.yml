@@ -1,0 +1,45 @@
+# docker-compose.override.yml — auto-loaded by docker-compose for local dev.
+# Overrides the base devops/docker-compose.yml with development-friendly settings.
+version: '3.9'
+
+services:
+  mongo:
+    # Expose to host only in dev for local DB tools (Compass, mongosh)
+    ports:
+      - "27017:27017"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  backend:
+    build:
+      context: ../server
+      dockerfile: Dockerfile.dev
+      target: ""   # skip multi-stage — use dev dockerfile
+    environment:
+      NODE_ENV: development
+    volumes:
+      # Hot-reload: mount source so ts-node-dev picks up changes
+      - ../server/src:/app/src:delegated
+      - /app/node_modules
+    ports:
+      - "5000:5000"
+      - "9229:9229"   # Node.js debugger port
+    command: npm run dev
+
+  frontend:
+    build:
+      context: ../client
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ../client/src:/app/src:delegated
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    command: npm run dev -- --host
+
+  nginx:
+    # Skip nginx in local dev — Vite proxy handles /api and /socket.io
+    profiles:
+      - production

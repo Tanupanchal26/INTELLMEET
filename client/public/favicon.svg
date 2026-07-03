@@ -1,0 +1,26 @@
+<svg viewBox="-10 -10 390 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    path, line {
+      stroke: #101828; /* Default dark color for light theme browser tab */
+    }
+    @media (prefers-color-scheme: dark) {
+      path, line {
+        stroke: #FFFBF4; /* Light bone color for dark theme browser tab */
+      }
+    }
+  </style>
+  <line
+    x1="15"
+    y1="122"
+    x2="109"
+    y2="13"
+    stroke-width="31"
+    stroke-linecap="round"
+  />
+  <path
+    d="M 91 127 L 171 35 C 187 8, 215 12, 215 37 L 216 110 C 216 127, 230 110, 235 102 C 293 45, 303 3, 335 22 L 353 124"
+    stroke-width="31"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>

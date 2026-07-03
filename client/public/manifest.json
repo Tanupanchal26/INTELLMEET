@@ -1,0 +1,17 @@
+{
+  "name": "IntellMeet",
+  "short_name": "IntellMeet",
+  "description": "AI-powered meeting collaboration platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07070C",
+  "theme_color": "#6366F1",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

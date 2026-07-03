@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en" dir="ltr" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+    <!-- ═══════════════════════════ PRIMARY META ═══════════════════════════ -->
+    <title>IntellMeet — AI-Powered Meeting Platform</title>
+    <meta name="description" content="IntellMeet combines HD video conferencing, live AI transcription, smart meeting summaries, action item extraction, and team channels in one enterprise workspace." />
+    <meta name="keywords" content="video conferencing, AI meeting, transcription, meeting summary, team collaboration, enterprise, WebRTC" />
+    <meta name="author" content="IntellMeet Inc." />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#07070C" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#07070C" />
+    <meta name="color-scheme" content="dark" />
+
+    <!-- ═══════════════════════════ OPEN GRAPH ═══════════════════════════ -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="IntellMeet" />
+    <meta property="og:title" content="IntellMeet — AI-Powered Meeting Platform" />
+    <meta property="og:description" content="HD video conferencing with live AI transcription, smart summaries, and action item extraction. The meeting platform that thinks with you." />
+    <meta property="og:url" content="https://intellmeet.io" />
+    <meta property="og:image" content="https://intellmeet.io/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="IntellMeet — AI-Powered Meeting Platform" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- ═══════════════════════════ TWITTER CARD ═══════════════════════════ -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@intellmeet" />
+    <meta name="twitter:creator" content="@intellmeet" />
+    <meta name="twitter:title" content="IntellMeet — AI-Powered Meeting Platform" />
+    <meta name="twitter:description" content="HD video conferencing with live AI transcription, smart summaries, and action item extraction." />
+    <meta name="twitter:image" content="https://intellmeet.io/og-image.png" />
+    <meta name="twitter:image:alt" content="IntellMeet dashboard preview" />
+
+    <!-- ═══════════════════════════ APPLE / PWA ═══════════════════════════ -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="IntellMeet" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="IntellMeet" />
+    <meta name="msapplication-TileColor" content="#07070C" />
+    <meta name="msapplication-config" content="/browserconfig.xml" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- ═══════════════════════════ FAVICON / ICONS ═══════════════════════════ -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#6366F1" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="canonical" href="https://intellmeet.io" />
+
+    <!-- ═══════════════════════════ DNS PREFETCH / PRECONNECT ═══════════════════════════ -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+
+    <!-- ═══════════════════════════ FONTS ═══════════════════════════ -->
+    <!--
+      Font stack:
+        - Plus Jakarta Sans  → headings, display text, brand voice
+        - Inter              → body, UI chrome, data labels
+        - Geist Mono         → code blocks, IDs, technical strings
+      All loaded with font-display: swap for performance.
+    -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- ═══════════════════════════ CRITICAL INLINE STYLES ═══════════════════════════ -->
+    <!--
+      Inline the absolute minimum to prevent FOUC:
+      background colour, font-family, and colour-scheme.
+      Everything else is in global.css loaded by Vite.
+    -->
+    <style>
+      /* Prevent flash of white / unstyled content */
+      :root { color-scheme: dark; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #07070C;
+        color: #F1F5F9;
+        font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+      }
+      /* Skeleton / loading state before React hydrates */
+      #root:empty::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: #07070C;
+        z-index: 9999;
+      }
+      /* Accessible skip-link pre-render */
+      .skip-to-main {
+        position: absolute;
+        top: -100%;
+        left: 0;
+        z-index: 10000;
+        padding: 8px 16px;
+        background: #6366F1;
+        color: #fff;
+        font-size: 0.875rem;
+        font-weight: 600;
+        border-radius: 0 0 8px 0;
+        transition: top 0.15s;
+      }
+      .skip-to-main:focus {
+        top: 0;
+      }
+    </style>
+
+    <!-- ═══════════════════════════ STRUCTURED DATA ═══════════════════════════ -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "IntellMeet",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "description": "AI-powered meeting collaboration platform combining HD video conferencing, live transcription, smart summaries, and team channels.",
+        "url": "https://intellmeet.io",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "author": {
+          "@type": "Organization",
+          "name": "IntellMeet Inc.",
+          "url": "https://intellmeet.io"
+        },
+        "featureList": [
+          "HD Video Conferencing",
+          "Live AI Transcription",
+          "Smart Meeting Summaries",
+          "Action Item Extraction",
+          "Team Channels",
+          "Meeting Analytics"
+        ]
+      }
+    </script>
+  </head>
+
+  <body>
+    <!-- Accessibility: skip navigation -->
+    <a class="skip-to-main" href="#main-content">Skip to main content</a>
+
+    <!-- React root -->
+    <div id="root" role="application" aria-label="IntellMeet Application"></div>
+
+    <!-- ═══════════════════════════ NO-SCRIPT FALLBACK ═══════════════════════════ -->
+    <noscript>
+      <style>
+        body {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          background: #07070C;
+          color: #F1F5F9;
+          font-family: 'Inter', system-ui, sans-serif;
+          text-align: center;
+          padding: 24px;
+        }
+        .noscript-box {
+          max-width: 440px;
+          padding: 40px 32px;
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 20px;
+          background: rgba(15,15,24,0.95);
+        }
+        .noscript-logo {
+          width: 48px;
+          height: 48px;
+          border-radius: 14px;
+          background: #6366F1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 20px;
+          font-size: 22px;
+        }
+        .noscript-title {
+          font-size: 1.25rem;
+          font-weight: 700;
+          margin-bottom: 10px;
+          letter-spacing: -0.02em;
+        }
+        .noscript-body {
+          font-size: 0.875rem;
+          color: #64748B;
+          line-height: 1.65;
+        }
+        .noscript-link {
+          display: inline-block;
+          margin-top: 20px;
+          padding: 10px 24px;
+          background: #6366F1;
+          color: white;
+          border-radius: 10px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          text-decoration: none;
+        }
+      </style>
+      <div class="noscript-box">
+        <div class="noscript-logo">⚡</div>
+        <h1 class="noscript-title">JavaScript Required</h1>
+        <p class="noscript-body">
+          IntellMeet is an interactive application that requires JavaScript to run.<br />
+          Please enable JavaScript in your browser settings and reload the page.
+        </p>
+        <a href="https://enable-javascript.com" target="_blank" rel="noopener noreferrer" class="noscript-link">
+          How to enable JavaScript →
+        </a>
+      </div>
+    </noscript>
+
+    <!-- Vite entry point -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

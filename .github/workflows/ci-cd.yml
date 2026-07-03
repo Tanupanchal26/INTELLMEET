@@ -1,0 +1,194 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION:       us-east-1
+  ECR_BACKEND:      intellmeet-backend
+  ECR_FRONTEND:     intellmeet-frontend
+  ECS_CLUSTER:      intellmeet-cluster
+  ECS_SERVICE_API:  intellmeet-api-service
+  ECS_SERVICE_WEB:  intellmeet-web-service
+  NODE_VERSION:     18
+
+# ── 1. Lint & Test ─────────────────────────────────────────────────────────────
+jobs:
+  test:
+    name: Lint, Test & Security Audit
+    runs-on: ubuntu-latest
+
+    # Fix Issue 20: spin up MongoDB for integration tests
+    services:
+      mongo:
+        image: mongo:7.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval \"db.adminCommand('ping')\""
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            client/package-lock.json
+
+      # ── Backend ──
+      - name: Backend — install
+        working-directory: server
+        run: npm ci
+
+      - name: Backend — lint
+        working-directory: server
+        run: npm run lint --if-present
+
+      - name: Backend — test with coverage
+        working-directory: server
+        run: npm run test:coverage
+        env:
+          NODE_ENV: test
+          MONGO_URI: mongodb://localhost:27017/intellmeet_test
+          JWT_SECRET: test-access-secret-minimum-32-characters-ci!
+          JWT_REFRESH_SECRET: test-refresh-secret-minimum-32-characters-ci!
+
+      - name: Backend — security audit
+        working-directory: server
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      # ── Frontend ──
+      - name: Frontend — install
+        working-directory: client
+        run: npm ci
+
+      - name: Frontend — lint
+        working-directory: client
+        run: npm run lint
+
+      - name: Frontend — type check
+        working-directory: client
+        run: npx tsc --noEmit
+
+      - name: Frontend — build
+        working-directory: client
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: https://api.intellmeet.com/api/v1
+          VITE_SOCKET_URL: https://api.intellmeet.com
+
+      - name: Frontend — security audit
+        working-directory: client
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  # ── 2. Build & Push Docker Images ───────────────────────────────────────────
+  build:
+    name: Build & Push to ECR
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      backend_image:  ${{ steps.build_backend.outputs.image }}
+      frontend_image: ${{ steps.build_frontend.outputs.image }}
+
+    permissions:
+      id-token: write   # required for OIDC
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fix Issue 7: OIDC — no static long-lived AWS keys
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push backend
+        id: build_backend
+        env:
+          REGISTRY:  ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --tag $REGISTRY/$ECR_BACKEND:$IMAGE_TAG \
+            ./server
+          docker push $REGISTRY/$ECR_BACKEND:$IMAGE_TAG
+          echo "image=$REGISTRY/$ECR_BACKEND:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Build & push frontend
+        id: build_frontend
+        env:
+          REGISTRY:  ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg VITE_API_BASE_URL=https://api.intellmeet.com/api/v1 \
+            --build-arg VITE_SOCKET_URL=https://api.intellmeet.com \
+            --tag $REGISTRY/$ECR_FRONTEND:$IMAGE_TAG \
+            ./client
+          docker push $REGISTRY/$ECR_FRONTEND:$IMAGE_TAG
+          echo "image=$REGISTRY/$ECR_FRONTEND:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  # ── 3. Deploy to ECS ─────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to ECS
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fix Issue 7: OIDC — no static long-lived AWS keys
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region:     ${{ env.AWS_REGION }}
+
+      # Fix Issue 8: fetch current task def, inject new image SHA, register + deploy
+      - name: Deploy backend — update task definition
+        id: deploy_backend
+        uses: aws-actions/amazon-ecs-deploy-task-def@v2
+        with:
+          task-definition-arn: ${{ secrets.ECS_TASK_DEF_BACKEND_ARN }}
+          service:             ${{ env.ECS_SERVICE_API }}
+          cluster:             ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          image: ${{ needs.build.outputs.backend_image }}
+          container-name: api
+
+      - name: Deploy frontend — update task definition
+        uses: aws-actions/amazon-ecs-deploy-task-def@v2
+        with:
+          task-definition-arn: ${{ secrets.ECS_TASK_DEF_FRONTEND_ARN }}
+          service:             ${{ env.ECS_SERVICE_WEB }}
+          cluster:             ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+          image: ${{ needs.build.outputs.frontend_image }}
+          container-name: web
+
+      - name: Smoke test — health check
+        run: |
+          curl --fail --silent --max-time 10 \
+            https://api.intellmeet.com/health || exit 1

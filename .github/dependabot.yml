@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # Backend dependencies
+  - package-ecosystem: npm
+    directory: /server
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      production-deps:
+        patterns: ["*"]
+        exclude-patterns: ["@types/*"]
+      dev-deps:
+        patterns: ["@types/*"]
+
+  # Frontend dependencies
+  - package-ecosystem: npm
+    directory: /client
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

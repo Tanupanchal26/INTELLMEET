@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "noEmitOnError": true,
+    "allowJs": true,
+    "outDir": "./dist",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "lib": ["es2022"],
+    "types": ["node", "jest"],
+    "typeRoots": ["./src/@types", "./node_modules/@types"],
+    "resolveJsonModule": true,
+    "ignoreDeprecations": "6.0",
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/**/*",
+    "src/@types/**/*"
+  ]
+}
