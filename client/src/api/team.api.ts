@@ -39,4 +39,5 @@ export const teamService = {
   updateMemberRole:   (id: string, userId: string, role: string) => api.patch(`/teams/${id}/members/${userId}/role`, { role }),
   listChannels:       (teamId: string) => api.get<Channel[]>(`/teams/${teamId}/channels`),
   createChannel:      (teamId: string, data: Partial<Channel>) => api.post<Channel>(`/teams/${teamId}/channels`, data),
+  searchUsersToInvite:(query: string) => api.get<{ _id: string; name: string; email: string; avatar?: string }[]>(`/teams/search/users?q=${encodeURIComponent(query)}`),
 };

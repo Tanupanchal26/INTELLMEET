@@ -13,6 +13,7 @@ import Button from '../components/common/Button';
 import Modal from '../components/common/Modal';
 import Loader from '../components/common/Loader';
 import { ChannelHeader } from '../components/channels/ChannelHeader';
+import { TeamMembersModal } from '../components/team/TeamMembersModal';
 
 import { MessageList } from '../features/chat/components/MessageList';
 import { MessageInput } from '../features/chat/components/MessageInput';
@@ -212,6 +213,7 @@ const Channels = () => {
     return role === 'admin' || role === 'super_admin';
   });
   const [showCreate, setShowCreate] = useState(false);
+  const [showMembers, setShowMembers] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', type: 'public' as 'public' | 'private' | 'announcement' });
 
   // Local state for when loaded via `/channels` (no URL parameters)
@@ -363,10 +365,13 @@ const Channels = () => {
         </div>
 
         <div className="px-4 py-3 border-t border-[var(--color-border)] bg-[var(--color-bg-tertiary)]/30">
-          <p className="text-xs text-[var(--color-text-secondary)] flex items-center gap-2 font-semibold">
+          <button 
+            onClick={() => team && setShowMembers(true)} 
+            className="text-xs text-[var(--color-text-secondary)] flex items-center gap-2 font-semibold hover:text-[var(--color-primary)] transition-colors cursor-pointer"
+          >
             <Users size={13} className="text-indigo-600" />
             {team?.members?.length ?? 0} members
-          </p>
+          </button>
         </div>
       </aside>
 
@@ -414,6 +419,14 @@ const Channels = () => {
           </div>
         </div>
       </Modal>
+
+      {team && (
+        <TeamMembersModal 
+          open={showMembers} 
+          onClose={() => setShowMembers(false)} 
+          team={team} 
+        />
+      )}
     </div>
   );
 };

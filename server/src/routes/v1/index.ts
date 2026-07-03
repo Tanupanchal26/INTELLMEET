@@ -82,6 +82,7 @@ router.put('/meetings/:id/notes',   validate(MV.upsertNote),          meetingCtr
 
 // ── Teams ─────────────────────────────────────────────────────────────────────
 router.use('/teams', protect, scopeTenant());
+router.get('/teams/search/users',                    teamCtrl.searchUsersToInvite);
 router.post('/teams',                             validate(TV.createTeam), teamCtrl.createTeam);
 router.get('/teams',                                                            teamCtrl.listTeams);
 router.get('/teams/:id',                             validate(TV.teamParam),   teamCtrl.getTeam);

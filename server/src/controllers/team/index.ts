@@ -9,6 +9,7 @@ const teamService = require('../../services/team.service') as {
   inviteMember: (...args: unknown[]) => Promise<unknown>;
   removeMember: (...args: unknown[]) => Promise<unknown>;
   updateMemberRole: (...args: unknown[]) => Promise<unknown>;
+  searchUsers: (...args: unknown[]) => Promise<unknown>;
 };
 const ApiResponse = require('../../utils/ApiResponse').default;
 const asyncHandler = require('../../utils/asyncHandler').default as (fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => void;
@@ -51,6 +52,11 @@ exports.removeMember = asyncHandler(async (req: Request, res: Response) => {
 exports.updateMemberRole = asyncHandler(async (req: Request, res: Response) => {
   const team = await teamService.updateMemberRole(req.params.id, req.tenantId, req.user?._id, req.params.userId, (req.body as { role?: string }).role);
   ApiResponse.ok(res, team, 'Role updated');
+});
+
+exports.searchUsersToInvite = asyncHandler(async (req: Request, res: Response) => {
+  const users = await teamService.searchUsers(req.tenantId, req.query.q as string);
+  ApiResponse.ok(res, users);
 });
 
 export {};

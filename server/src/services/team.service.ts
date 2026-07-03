@@ -1,6 +1,7 @@
 // @ts-nocheck
 const teamRepo    = require('../repositories/team.repository');
 const channelRepo  = require('../repositories/channel.repository');
+const User        = require('../models/User');
 const notifService = require('./notification.service');
 const ApiError    = require('../utils/ApiError');
 const { PAGINATION } = require('../constants');
@@ -110,10 +111,21 @@ const updateMemberRole = async (teamId, tenantId, actorId, targetUserId, role) =
   return teamRepo.updateMemberRole(teamId, tenantId, targetUserId, role);
 };
 
+// ── Search Users ──────────────────────────────────────────────────────────────
+const searchUsers = async (tenantId, query, limit = 10) => {
+  if (!query || query.trim().length < 2) return [];
+  const regex = new RegExp(query, 'i');
+  return User.find({
+    tenantId,
+    $or: [{ name: regex }, { email: regex }]
+  }).select('name email avatar').limit(limit).lean();
+};
+
 module.exports = {
   createTeam, getUserTeams, getTeam,
   updateTeam, deleteTeam,
   inviteMember, removeMember, updateMemberRole,
+  searchUsers,
 };
 
 export {};
