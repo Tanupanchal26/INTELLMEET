@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Video, CheckSquare, Users, Calendar, BarChart2,
-  Sparkles, Bell, TrendingUp, Clock, ArrowRight, Zap, Brain
+  Sparkles, Bell, Clock, ArrowRight, Zap, Brain
 } from 'lucide-react';
 import { useAppSelector } from '../hooks/useAppDispatch';
 import { ROUTES, MEETING_ROUTE } from '../constants';
@@ -85,7 +85,7 @@ export default function Dashboard() {
     return (
       <PageContainer className="db-container">
         <div className="db-grid-4">
-          {Array.from({ length: 4 }).map((_, i) => (
+          {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="db-metric-card animate-pulse">
               <div className="h-10 w-10 rounded-lg bg-[var(--color-surface-2)] mb-3" />
               <div className="h-7 w-16 rounded bg-[var(--color-surface-2)] mb-2" />
@@ -105,10 +105,12 @@ export default function Dashboard() {
   const { metrics, recentMeetings, upcomingMeetings, taskData, recentActivity } = data;
 
   const dynamicMetrics = [
-    { label: 'Meetings this month', value: metrics.meetingsThisMonth, delta: '+24%', trendType: 'up', icon: Calendar, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-500/10 border border-blue-500/20', glowClass: 'glow-blue' },
-    { label: 'Hours saved by AI', value: `${metrics.hoursSaved}h`, delta: '+31%', trendType: 'up', icon: Brain, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-500/10 border border-purple-500/20', glowClass: 'glow-purple' },
-    { label: 'Tasks completed', value: metrics.tasksCompleted, delta: '+18%', trendType: 'up', icon: CheckSquare, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10 border border-emerald-500/20', glowClass: 'glow-emerald' },
-    { label: 'Team members online', value: metrics.teamMembersOnline, delta: 'Live', trendType: 'live', icon: Users, color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-500/10 border border-rose-500/20', glowClass: 'glow-rose' },
+    { label: 'Meetings Created',     value: metrics.meetingsCreated,     icon: Video,        color: 'text-blue-600 dark:text-blue-400',    bg: 'bg-blue-500/10 border border-blue-500/20',    glowClass: 'glow-blue' },
+    { label: 'Meetings Joined',      value: metrics.meetingsJoined,      icon: Users,        color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-500/10 border border-indigo-500/20', glowClass: '' },
+    { label: 'Total Meetings',       value: metrics.totalMeetings,       icon: Calendar,     color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-500/10 border border-purple-500/20', glowClass: 'glow-purple' },
+    { label: 'Total Meeting Hours',  value: `${metrics.totalMeetingHours}h`, icon: Clock,    color: 'text-amber-600 dark:text-amber-400',   bg: 'bg-amber-500/10 border border-amber-500/20',   glowClass: '' },
+    { label: 'AI Summaries',         value: metrics.aiSummariesGenerated, icon: Brain,       color: 'text-rose-600 dark:text-rose-400',     bg: 'bg-rose-500/10 border border-rose-500/20',     glowClass: 'glow-rose' },
+    { label: 'Tasks Completed',      value: metrics.tasksCompleted,      icon: CheckSquare,  color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10 border border-emerald-500/20', glowClass: 'glow-emerald' },
   ];
 
   const tasksList = taskData.map((t: any) => ({
@@ -125,16 +127,12 @@ export default function Dashboard() {
 
       {/* ── KPI Cards Grid ── */}
       <div className="db-grid-4">
-        {dynamicMetrics.map(({ label, value, delta, trendType, icon: Icon, color, bg, glowClass }, i) => (
+        {dynamicMetrics.map(({ label, value, icon: Icon, color, bg, glowClass }, i) => (
           <motion.div key={label} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: i * 0.08 }} className={clsx("db-metric-card", glowClass)}>
             <div className="db-metric-card-header">
               <div className={clsx("db-metric-icon-wrapper", bg)}>
                 <Icon size={18} className={color} aria-hidden="true" />
               </div>
-              <span className={clsx("db-metric-trend", trendType)}>
-                {trendType === 'live' ? <span className="db-metric-trend-dot live" /> : <TrendingUp size={12} />}
-                {delta}
-              </span>
             </div>
             <div className="db-metric-value-box">
               <p className="db-metric-value">{value}</p>

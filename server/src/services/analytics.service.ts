@@ -1,68 +1,91 @@
 // @ts-nocheck
 const Meeting      = require('../models/Meeting');
 const Task         = require('../models/Task');
-const User         = require('../models/User');
 const AIResult     = require('../models/AIResult');
-const Recording    = require('../models/Recording');
 const Notification = require('../models/Notification');
+const User         = require('../models/User');
 const mongoose     = require('mongoose');
 
 exports.getDashboardMetrics = async (tenantId, userId) => {
   const tid = new mongoose.Types.ObjectId(tenantId);
   const uid = new mongoose.Types.ObjectId(userId);
-  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
   const [
     taskData,
     recentMeetings,
     upcomingMeetings,
-    meetingsThisMonth,
-    totalMeetings,
+    meetingStats,
     meetingHoursAgg,
-    aiSummariesGenerated,
-    activeUsers,
+    aiSummariesAgg,
     rawActivity,
   ] = await Promise.all([
     Task.aggregate([
       { $match: { tenantId: tid, $or: [{ assignedTo: uid }, { createdBy: uid }] } },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]),
-    Meeting.find({ tenantId, participants: userId, status: { $in: ['ended', 'active'] } })
+    Meeting.find({ tenantId: tid, participants: uid, status: { $in: ['ended', 'active'] } })
       .populate('host', 'name avatar')
       .populate('participants', 'name avatar')
       .sort({ startedAt: -1 }).limit(5).lean(),
-    Meeting.find({ tenantId, participants: userId, status: 'scheduled', scheduledAt: { $gte: new Date() } })
+    Meeting.find({ tenantId: tid, participants: uid, status: 'scheduled', scheduledAt: { $gte: new Date() } })
       .populate('host', 'name avatar')
       .populate('participants', 'name avatar')
       .sort({ scheduledAt: 1 }).limit(4).lean(),
-    Meeting.countDocuments({ tenantId, participants: userId, createdAt: { $gte: startOfMonth } }),
-    Meeting.countDocuments({ tenantId, participants: userId }),
     Meeting.aggregate([
-      { $match: { tenantId: tid, participants: uid, status: 'ended' } },
+      { $match: { tenantId: tid, $or: [{ host: uid }, { participants: uid }] } },
+      {
+        $group: {
+          _id: null,
+          meetingsCreated: { $sum: { $cond: [{ $eq: ['$host', uid] }, 1, 0] } },
+          meetingsJoined:  { $sum: { $cond: [{ $and: [{ $ne: ['$host', uid] }, { $in: [uid, '$participants'] }] }, 1, 0] } },
+          totalMeetings:   { $sum: 1 },
+        },
+      },
+    ]),
+    Meeting.aggregate([
+      { $match: { tenantId: tid, participants: uid, status: 'ended', duration: { $gt: 0 } } },
       { $group: { _id: null, totalMinutes: { $sum: '$duration' } } },
     ]),
-    AIResult.countDocuments({ summary: { $ne: '' } }),
-    User.countDocuments({ tenantId, status: 'active' }),
+    AIResult.aggregate([
+      {
+        $lookup: {
+          from: 'meetings',
+          localField: 'meeting',
+          foreignField: '_id',
+          as: 'meetingDoc',
+        },
+      },
+      { $unwind: '$meetingDoc' },
+      {
+        $match: {
+          'meetingDoc.tenantId': tid,
+          'meetingDoc.participants': uid,
+          summary: { $ne: '' },
+        },
+      },
+      { $count: 'total' },
+    ]),
     Notification.find({ recipient: uid }).sort({ createdAt: -1 }).limit(5).lean(),
   ]);
 
+  const stats = meetingStats[0] || { meetingsCreated: 0, meetingsJoined: 0, totalMeetings: 0 };
   const doneTasks = taskData.find(t => t._id === 'done')?.count || 0;
   const totalTasks = taskData.reduce((acc, curr) => acc + curr.count, 0);
   const totalMeetingHours = Math.round((meetingHoursAgg[0]?.totalMinutes || 0) / 60);
+  const aiSummariesGenerated = aiSummariesAgg[0]?.total || 0;
   const recentActivity = rawActivity.map(n => ({
     id: n._id, type: n.type, text: n.body || n.title, time: n.createdAt, isRead: n.isRead,
   }));
 
   return {
     metrics: {
-      totalMeetings,
-      meetingsThisMonth,
-      meetingHours: totalMeetingHours,
-      hoursSaved: Math.max(1, Math.round(meetingsThisMonth * 0.5)),
-      tasksCompleted: doneTasks,
-      totalTasks,
-      teamMembersOnline: activeUsers,
+      meetingsCreated:     stats.meetingsCreated,
+      meetingsJoined:      stats.meetingsJoined,
+      totalMeetings:       stats.totalMeetings,
+      totalMeetingHours,
       aiSummariesGenerated,
+      tasksCompleted:      doneTasks,
+      totalTasks,
     },
     recentMeetings,
     upcomingMeetings,
