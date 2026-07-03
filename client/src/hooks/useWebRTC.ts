@@ -253,7 +253,6 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       iceCandidateQueue.current.clear();
       mediaReadyRef.current = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   // ── Socket signaling ──────────────────────────────────────────────────────────
@@ -346,8 +345,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     };
 
     toggleCamera();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-run on isVideoOff change
-  }, [isVideoOff]);
+  }, [isVideoOff, broadcastMediaState, isMuted, replaceVideoTrackInPeers]);
 
   // ── Mic toggle ────────────────────────────────────────────────────────────────
 
@@ -355,8 +353,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     if (!mediaReadyRef.current) return;
     localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
     broadcastMediaState(isVideoOff, isMuted);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-run on isMuted change
-  }, [isMuted]);
+  }, [isMuted, broadcastMediaState, isVideoOff]);
 
   // ── Screen share ──────────────────────────────────────────────────────────────
 

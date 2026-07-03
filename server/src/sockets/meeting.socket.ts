@@ -51,9 +51,8 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
         user: { id: user.id, name: user.name, avatar: user.avatar },
       });
 
-      // Find the meeting host id
-      const meeting = await Meeting.findOne({ roomId });
-      const hostIdStr = meeting?.host?.toString();
+      // Find the meeting host id (reuse existingMeeting already fetched above)
+      const hostIdStr = existingMeeting?.host?.toString();
 
       const room = io.sockets.adapter.rooms.get(`meeting:${roomId}`);
       const participants: object[] = [];
@@ -256,13 +255,18 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
         { $set: { status: 'ended', endedAt: new Date() } }
       );
 
-      // Notify all participants before disconnecting them
+      const meetingId = meeting._id.toString();
+
+      // Notify AI processing BEFORE disconnecting participants so they receive it
+      io.to(`meeting:${roomId}`).emit('ai:processing', { step: 'summary' });
+
+      // Notify all participants the meeting ended
       io.to(`meeting:${roomId}`).emit('meeting:ended-by-host', { roomId });
 
       // Disconnect all sockets from the room
       const room = io.sockets.adapter.rooms.get(`meeting:${roomId}`);
       if (room) {
-        for (const sid of room) {
+        for (const sid of [...room]) {
           const s = io.sockets.sockets.get(sid);
           if (s) {
             s.leave(`meeting:${roomId}`);
@@ -271,14 +275,17 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
         }
       }
 
-      // Trigger AI pipeline
-      const meetingId = meeting._id.toString();
-      io.to(`meeting:${meetingId}`).emit('ai:processing', { step: 'summary' });
-      const [summary, actionItems] = await Promise.all([
-        aiService.summarize(meetingId),
-        aiService.getActionItems(meetingId),
-      ]);
-      io.to(`meeting:${meetingId}`).emit('ai:summary-ready', { summary, actionItems });
+      // Trigger AI pipeline (fire-and-forget — clients already received ai:processing)
+      try {
+        const [summary, actionItems] = await Promise.all([
+          aiService.summarize(meetingId),
+          aiService.getActionItems(meetingId),
+        ]);
+        // Emit to meetingId room (notes subscribers may still be connected)
+        io.to(`meeting:${meetingId}`).emit('ai:summary-ready', { summary, actionItems });
+      } catch (aiErr) {
+        logger.error(`[SOCKET] meeting:end AI pipeline error: ${(aiErr as Error).message}`);
+      }
     } catch (err) {
       logger.error(`[SOCKET] meeting:end error: ${(err as Error).message}`);
     }
@@ -294,13 +301,21 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
         { $set: { status: 'ended', endedAt: new Date() } }
       );
 
-      io.to(`meeting:${meetingId}`).emit('ai:processing', { step: 'summary' });
+      // Force disconnect all participants
+      io.to(`meeting:${meetingId}`).emit('meeting:force-end');
+      
+      // We don't remove them from the room immediately so they can receive the force-end event
+      setTimeout(() => {
+        io.in(`meeting:${meetingId}`).socketsLeave(`meeting:${meetingId}`);
+        io.in(`meeting:${meetingId}`).socketsLeave(`chat:${meetingId}`);
+      }, 1000);
 
       const [summary, actionItems] = await Promise.all([
         aiService.summarize(meetingId),
         aiService.getActionItems(meetingId),
       ]);
 
+      // If any clients are still listening (e.g. host on a summary page), they get this
       io.to(`meeting:${meetingId}`).emit('ai:summary-ready', { summary, actionItems });
     } catch (err) {
       logger.error(`[SOCKET] meeting:ended AI error: ${(err as Error).message}`);

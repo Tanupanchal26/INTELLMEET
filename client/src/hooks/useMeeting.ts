@@ -10,6 +10,7 @@ import { getSocket } from '../utils/socket';
 
 /** Strip control characters to prevent log/XSS injection from socket payloads */
 const sanitize = (v: unknown): string =>
+  // eslint-disable-next-line no-control-regex
   String(v ?? '').replace(/[\r\n\t\x00-\x1f\x7f<>"'`]/g, '_').slice(0, 256);
 
 export const useMeeting = (roomId?: string) => {
@@ -54,7 +55,13 @@ export const useMeeting = (roomId?: string) => {
     };
     const onMeetingEndedByHost = () => {
       resetMeeting();
-      toast('Meeting has ended.', { icon: '🔴', duration: 4000 });
+      toast('Meeting has ended. Do not allow reconnect.', { icon: '🔴', duration: 4000 });
+      navigate(ROUTES.LOBBY);
+    };
+
+    const onForceEnd    = () => {
+      resetMeeting();
+      toast('Meeting has ended. Do not allow reconnect.', { icon: '🔴', duration: 4000 });
       navigate(ROUTES.LOBBY);
     };
 
@@ -65,6 +72,7 @@ export const useMeeting = (roomId?: string) => {
     socket.on('meeting:raise-hand',   onRaiseHand);
     socket.on('meeting:participants-list', onParticipantsList);
     socket.on('meeting:ended-by-host', onMeetingEndedByHost);
+    socket.on('meeting:force-end',    onForceEnd);
     setInCall(true);
 
     return () => {
@@ -75,6 +83,7 @@ export const useMeeting = (roomId?: string) => {
       socket.off('meeting:raise-hand',   onRaiseHand);
       socket.off('meeting:participants-list', onParticipantsList);
       socket.off('meeting:ended-by-host', onMeetingEndedByHost);
+      socket.off('meeting:force-end',    onForceEnd);
     };
   }, [socket, roomId, addParticipant, removeParticipant, setInCall, appendTranscript, updateParticipant, resetMeeting, navigate]);
 
@@ -86,12 +95,12 @@ export const useMeeting = (roomId?: string) => {
     navigate(ROUTES.LOBBY);
   };
 
-  const endMeeting = (meetingId?: string) => {
-    const s = getSocket();
-    if (s?.connected && roomId) {
-      s.emit('meeting:end', { roomId });
-    }
-    if (meetingId) meetingService.end(meetingId).catch(() => {});
+  const endMeeting = async (meetingId: string) => {
+    socket?.emit('meeting:ended', { meetingId });
+    await meetingService.end(meetingId).catch(() => {});
+    resetMeeting();
+    toast('You ended the meeting', { icon: '👋' });
+    navigate(ROUTES.LOBBY);
   };
 
   return { leaveMeeting, endMeeting };

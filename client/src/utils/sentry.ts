@@ -35,6 +35,7 @@ export const captureException = (error: Error, context?: Record<string, unknown>
     _sentry.captureException(error, { extra: context });
   } else {
     // Sanitize error message before logging to prevent log injection
+    // eslint-disable-next-line no-control-regex
     const safeMsg = String(error?.message ?? error ?? '').replace(/[\r\n\t\x00-\x1f\x7f]/g, '_').slice(0, 512);
     console.error('[Error]', safeMsg);
   }

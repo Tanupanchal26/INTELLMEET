@@ -5,7 +5,7 @@
   "main": "src/server.ts",
   "scripts": {
     "start": "node dist/server.js",
-    "build": "rm -rf dist && tsc",
+    "build": "node -e \"fs.rmSync('dist', {recursive:true, force:true})\" && tsc",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "lint": "echo 'No linter configured'",
     "test": "jest --runInBand --detectOpenHandles",

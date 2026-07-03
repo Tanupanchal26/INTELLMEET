@@ -38,6 +38,7 @@ export const useTranscription = (meetingId: string) => {
       const current = event.resultIndex;
       // Sanitize transcript before emitting — prevents log injection
       const raw = String(event.results[current]?.[0]?.transcript ?? '');
+      // eslint-disable-next-line no-control-regex
       const chunk = raw.replace(/[\r\n\t\x00-\x1f\x7f]/g, ' ').trim().slice(0, 2000);
       if (!chunk) return;
       // We do NOT append locally here because the socket will echo it back to us via meeting:transcript-chunk
