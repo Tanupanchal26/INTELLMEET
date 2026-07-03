@@ -126,11 +126,11 @@ const AISummary = () => {
   };
 
   const handleExportPDF = () => {
-    if (selectedId) exportService.downloadSummaryPDF(selectedId, token);
+    if (selectedId) exportService.downloadSummaryPDF(selectedId);
   };
   
   const handleExportCSV = () => {
-    if (selectedId) exportService.downloadActionItemsCSV(selectedId, token);
+    if (selectedId) exportService.downloadActionItemsCSV(selectedId);
   };
 
   const displaySummary = aiResult?.summary || store.summary;

@@ -44,7 +44,7 @@ export default function Analytics() {
   });
 
   const handleExportAnalytics = () => {
-    exportService.downloadAnalyticsCSV(token);
+    exportService.downloadAnalyticsCSV();
   };
 
   if (isLoading) {
