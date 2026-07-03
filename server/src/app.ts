@@ -31,6 +31,12 @@ app.use(requestId);
 // Trust the first proxy hop (nginx) so express-rate-limit sees real client IPs
 app.set('trust proxy', 1);
 
+const safeClientUrl = (config.clientUrl ?? '').trim().replace(/[\r\n\0]/g, '');
+const connectSrcDirectives: string[] = ["'self'"];
+if (safeClientUrl) {
+  connectSrcDirectives.push(safeClientUrl, safeClientUrl.replace(/^http/, 'ws'));
+}
+
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: {
@@ -39,7 +45,7 @@ app.use(helmet({
       scriptSrc:  ["'self'"],
       styleSrc:   ["'self'", "'unsafe-inline'"],
       imgSrc:     ["'self'", 'data:', 'https://res.cloudinary.com', 'https://lh3.googleusercontent.com'],
-      connectSrc: ["'self'", config.clientUrl, config.clientUrl.replace(/^http/, 'ws')],
+      connectSrc: connectSrcDirectives,
       fontSrc:    ["'self'"],
       objectSrc:  ["'none'"],
       frameSrc:   ["'none'"],
