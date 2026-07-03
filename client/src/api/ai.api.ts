@@ -60,7 +60,7 @@ export const aiService = {
     api.get<AIResult>(`/ai/${meetingId}`),
 
   generateSummary: (meetingId: string, transcript: string, length: 'short' | 'medium' | 'detailed' = 'medium') =>
-    api.post<{ summary: string }>(`/ai/${meetingId}/summary`, { transcript, length }),
+    api.post<{ summary: string }>(`/ai/${meetingId}/summary`, { transcript, length }, { timeout: 60000 }),
 
   getSummary: (meetingId: string) =>
     api.get<{ summary: string; length: string }>(`/ai/${meetingId}/summary`),
@@ -72,7 +72,7 @@ export const aiService = {
     api.post(`/ai/${meetingId}/transcript`, { transcript }),
 
   getActionItems: (meetingId: string) =>
-    api.get<{ actionItems: ActionItem[] }>(`/ai/${meetingId}/action-items`),
+    api.get<{ actionItems: ActionItem[] }>(`/ai/${meetingId}/action-items`, { timeout: 60000 }),
 
   updateActionItem: (meetingId: string, itemId: string, data: Partial<ActionItem>) =>
     api.put<ActionItem>(`/ai/${meetingId}/action-items/${itemId}`, data),
@@ -90,13 +90,13 @@ export const aiService = {
     api.get<{ smartNotes: any }>(`/ai/${meetingId}/smart-notes`),
 
   generateMinutes: (meetingId: string) =>
-    api.post<{ minutes: string }>(`/ai/${meetingId}/minutes`),
+    api.post<{ minutes: string }>(`/ai/${meetingId}/minutes`, {}, { timeout: 60000 }),
 
   assistantChat: (meetingId: string, message: string, history: { role: string; content: string }[] = []) =>
     api.post<{ reply: string }>(`/ai/${meetingId}/assistant`, { message, context: { history } }),
 
   generateTasks: (meetingId: string, prompt?: string) =>
-    api.post<{ tasks: GeneratedTask[] }>(`/ai/${meetingId}/tasks`, { prompt }),
+    api.post<{ tasks: GeneratedTask[] }>(`/ai/${meetingId}/tasks`, { prompt }, { timeout: 60000 }),
 
   extractAndSaveTasks: (meetingId: string) =>
     api.post<{ tasks: any[] }>(`/ai/${meetingId}/extract-tasks`),

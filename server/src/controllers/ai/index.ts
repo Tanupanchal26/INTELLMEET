@@ -21,31 +21,28 @@ exports.getAIResult = asyncHandler(async (req, res) => {
 // ── POST /ai/:meetingId/summary ───────────────────────────────────────────────
 exports.generateSummary = asyncHandler(async (req, res) => {
   const { transcript, length = 'medium' } = req.body;
-  if (!transcript) throw ApiError.badRequest('transcript is required');
-  if (transcript.length > MAX_TRANSCRIPT)
+  
+  if (transcript && transcript.length > MAX_TRANSCRIPT)
     throw ApiError.badRequest(`transcript exceeds ${MAX_TRANSCRIPT} character limit`);
   if (!['short', 'medium', 'detailed'].includes(length))
     throw ApiError.badRequest('length must be short, medium, or detailed');
 
-  await AIResult.findOneAndUpdate(
-    { meeting: req.params.meetingId },
-    { meeting: req.params.meetingId, transcript },
-    { upsert: true, new: true }
-  );
-
-  const job = await enqueueAIJob('summarize', {
-    meetingId: req.params.meetingId,
-    tenantId:  req.user?.tenantId,
-    length,
-  });
-
-  if (job) {
-    return res.status(202).json(
-      new ApiResponse(202, `Summary queued (job: ${job.id})`, { jobId: job.id })
+  if (transcript) {
+    await AIResult.findOneAndUpdate(
+      { meeting: req.params.meetingId },
+      { meeting: req.params.meetingId, transcript },
+      { upsert: true, new: true }
     );
   }
 
   const summary = await aiService.summarize(req.params.meetingId, length);
+  
+  if (!summary) {
+    return res.status(400).json(
+      new ApiResponse(400, "Meeting transcript is empty. Generate or upload a transcript before requesting a summary.")
+    );
+  }
+  
   return ApiResponse.ok(res, { summary }, 'Summary generated');
 });
 
@@ -94,18 +91,9 @@ exports.saveTranscript = asyncHandler(async (req, res) => {
 exports.getActionItems = asyncHandler(async (req, res) => {
   const result = await AIResult.findOne({ meeting: req.params.meetingId });
   if (!result?.transcript && !result?.transcriptChunks?.length)
-    throw ApiError.badRequest('No transcript found for this meeting');
-
-  const job = await enqueueAIJob('actionItems', {
-    meetingId: req.params.meetingId,
-    tenantId:  req.user?.tenantId,
-  });
-
-  if (job) {
-    return res.status(202).json(
-      new ApiResponse(202, `Action items extraction queued (job: ${job.id})`, { jobId: job.id })
+    return res.status(400).json(
+      new ApiResponse(400, "Meeting transcript is empty. Generate or upload a transcript before requesting action items.")
     );
-  }
 
   const actionItems = await aiService.getActionItems(req.params.meetingId);
   return ApiResponse.ok(res, { actionItems }, 'Action items extracted');

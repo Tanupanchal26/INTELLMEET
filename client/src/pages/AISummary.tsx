@@ -80,8 +80,10 @@ const AISummary = () => {
       // Fetch existing transcript first; fall back to empty string
       const tRes: any = await aiService.getTranscript(selectedId);
       const transcript: string = tRes?.data?.transcript ?? tRes?.transcript ?? '';
-      if (!transcript.trim()) {
-        toast.error('No transcript found for this meeting. Please record or upload a transcript first.');
+      const chunks = tRes?.data?.chunks ?? tRes?.chunks ?? [];
+      
+      if (!transcript.trim() && chunks.length === 0) {
+        toast.error('Meeting transcript is empty. Generate or upload a transcript before requesting a summary.');
         return;
       }
       const sRes: any = await aiService.generateSummary(selectedId, transcript);
@@ -89,7 +91,7 @@ const AISummary = () => {
       const aRes: any = await aiService.getActionItems(selectedId);
       store.setActionItems(aRes?.data?.actionItems ?? aRes?.actionItems ?? []);
       toast.success('Summary generated');
-    } catch { toast.error('Failed to generate summary'); }
+    } catch (err: any) { toast.error(err.message || 'Failed to generate summary'); }
     finally { store.setGenerating(false); }
   };
 
