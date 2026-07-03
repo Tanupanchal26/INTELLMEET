@@ -7,7 +7,7 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+RUN rm -rf dist && npm run build
 
 # ── Stage 2: Production runtime ───────────────────────────────────────────────
 FROM node:18-alpine AS runtime
