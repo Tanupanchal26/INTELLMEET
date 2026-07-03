@@ -39,5 +39,5 @@ export const meetingService = {
   end:           (id: string) => api.post(`/meetings/${id}/end`),
   getNotes:      (id: string) => api.get(`/meetings/${id}/notes`),
   saveNotes:     (id: string, data: object) => api.put(`/meetings/${id}/notes`, data),
-  join:          (roomId: string) => api.post('/meetings/join', { roomId }),
+  join:          (code: string) => api.post('/meetings/join', { code }),
 };

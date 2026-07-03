@@ -29,6 +29,14 @@ class MeetingRepository extends BaseRepository {
     return Meeting.findOne({ roomId });
   }
 
+  findByMeetingId(meetingId: string) {
+    return Meeting.findOne({ meetingId });
+  }
+
+  findByJoinCode(joinCode: string) {
+    return Meeting.findOne({ joinCode });
+  }
+
   findUpcoming(tenantId: TenantId, userId: UserId, limit = 5) {
     return Meeting.find({
       tenantId,

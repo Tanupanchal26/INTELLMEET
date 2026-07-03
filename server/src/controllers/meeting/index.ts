@@ -123,11 +123,11 @@ exports.upsertMeetingNote = asyncHandler(async (req: Request, res: Response) => 
   ApiResponse.ok(res, note, 'Notes saved');
 });
 
-// ── Join by room code ─────────────────────────────────────────────────────────
+// ── Join by meetingId or joinCode ─────────────────────────────────────────────
 exports.joinMeeting = asyncHandler(async (req: Request, res: Response) => {
-  const { roomId } = req.body as { roomId?: string };
+  const { code, roomId } = req.body as { code?: string; roomId?: string };
   const meeting = await meetingService.joinByRoomId(
-    roomId,
+    code ?? roomId,
     req.tenantId,
     req.user?._id
   );

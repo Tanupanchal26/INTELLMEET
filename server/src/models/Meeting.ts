@@ -29,6 +29,8 @@ export interface IMeeting extends Document {
   host:         Types.ObjectId;
   participants: Types.ObjectId[];
   invitees:     IInvitee[];
+  meetingId:    string;
+  joinCode:     string;
   roomId:       string;
   status:       string;
   scheduledAt:  Date | null;
@@ -71,6 +73,8 @@ const meetingSchema = new Schema<IMeeting>(
     participants: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     invitees:     { type: [inviteeSchema], default: [] },
 
+    meetingId:    { type: String, required: true, unique: true },
+    joinCode:     { type: String, required: true, unique: true },
     roomId:       { type: String, required: true },
     status:       { type: String, enum: Object.values(MEETING_STATUS), default: MEETING_STATUS.SCHEDULED },
 
@@ -117,6 +121,8 @@ meetingSchema.index({ tenantId: 1, host: 1 });
 meetingSchema.index({ tenantId: 1, createdAt: -1 });
 meetingSchema.index({ tenantId: 1, participants: 1 });
 meetingSchema.index({ roomId: 1 }, { unique: true });
+meetingSchema.index({ meetingId: 1 }, { unique: true });
+meetingSchema.index({ joinCode: 1 }, { unique: true });
 
 const Meeting = mongoose.model<IMeeting>('Meeting', meetingSchema);
 

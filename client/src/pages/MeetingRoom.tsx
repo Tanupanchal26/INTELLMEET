@@ -121,30 +121,34 @@ const MeetingRoom = () => {
 
   const [activePanel, setActivePanel] = useState<Panel>('chat');
   const [panelOpen,   setPanelOpen]   = useState(true);
+  const [socketRoomId, setSocketRoomId] = useState<string>(id ?? '');
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, panelOpen);
 
   const { setCurrentMeeting, isRecording, currentMeeting } = useMeetingStore();
-  const { localStreamRef, localStream, remoteStreams, startScreenShare, stopScreenShare, stopAllTracks } = useWebRTC({ roomId: id ?? '', userId: user?.id ?? '' });
+  const { localStreamRef, localStream, remoteStreams, startScreenShare, stopScreenShare, stopAllTracks } = useWebRTC({ roomId: socketRoomId, userId: user?.id ?? '' });
   
   useTranscription(id ?? '');
 
-  // Start meeting on mount, fetch real title, clean up on leave
+  // Start meeting on mount, fetch real title + roomId, clean up on leave
   useEffect(() => {
     if (!id) return;
     const initMeeting = async () => {
       try {
         const res: any = await meetingService.start(id);
-        const meeting = res?.data || res;
+        // axios interceptor unwraps res.data → res is ApiResponse body {success, data: meeting}
+        const meeting = res?.data ?? res;
+        const roomId = meeting?.roomId || id;
+        setSocketRoomId(roomId);
         setCurrentMeeting({
           id,
           title: meeting?.title || 'Live Meeting',
-          roomId: meeting?.roomId || id,
-          host: meeting?.host || user?.id || '',
+          roomId,
+          host: meeting?.host?._id || meeting?.host || user?.id || '',
           startedAt: meeting?.startedAt,
         });
       } catch {
-        // Meeting may already be started — still set local state
+        // Meeting may already be started or user is joining (not host)
         setCurrentMeeting({ id, title: 'Live Meeting', roomId: id, host: user?.id ?? '' });
       }
     };

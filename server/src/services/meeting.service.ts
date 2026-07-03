@@ -1,7 +1,21 @@
 import { Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
+import { randomBytes } from 'crypto';
 import ApiError from '../utils/ApiError';
 import { MEETING_STATUS, ROLES, PAGINATION } from '../constants';
+
+// Generates e.g. "ABCD-1234" using crypto — no extra dependency
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const randomChar = (buf: Buffer, i: number) => ALPHABET[buf[i] % ALPHABET.length];
+const generateMeetingId = (): string => {
+  const b = randomBytes(8);
+  return `${randomChar(b,0)}${randomChar(b,1)}${randomChar(b,2)}${randomChar(b,3)}-${randomChar(b,4)}${randomChar(b,5)}${randomChar(b,6)}${randomChar(b,7)}`;
+};
+const JOIN_ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
+const generateJoinCode = (): string => {
+  const b = randomBytes(10);
+  return Array.from({ length: 10 }, (_, i) => JOIN_ALPHA[b[i] % JOIN_ALPHA.length]).join('');
+};
 
 const meetingRepo     = require('../repositories/meeting.repository');
 const meetingNoteRepo = require('../repositories/meetingNote.repository');
@@ -75,6 +89,8 @@ export const createMeeting = async (
   const meeting = await meetingRepo.create({
     tenantId,
     host:         userId,
+    meetingId:    generateMeetingId(),
+    joinCode:     generateJoinCode(),
     roomId:       uuidv4(),
     participants: uniqueParticipants,
     ...rest,
@@ -90,10 +106,16 @@ export const createMeeting = async (
     }
   }
 
-  return meetingRepo.findById(meeting._id, tenantId, [
+  const populated = await meetingRepo.findById(meeting._id, tenantId, [
     { path: 'host',         select: 'name avatar' },
     { path: 'participants', select: 'name avatar' },
   ]);
+
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  return {
+    ...populated.toObject ? populated.toObject() : populated,
+    joinLink: `${clientUrl}/lobby?join=${populated.meetingId}`,
+  };
 };
 
 // ── List ──────────────────────────────────────────────────────────────────────
@@ -310,32 +332,43 @@ export const upsertMeetingNote = async (
   return meetingNoteRepo.upsert(meetingId, tenantId, userId, data);
 };
 
-// ── Join by room code ─────────────────────────────────────────────────────────
+// ── Join by meetingId, joinCode, or roomId ────────────────────────────────────
 export const joinByRoomId = async (
-  roomId:   string | undefined,
+  code:     string | undefined,
   tenantId: TenantId,
   userId:   UserId
 ) => {
-  if (!roomId?.trim()) throw ApiError.badRequest('roomId is required');
+  if (!code?.trim()) throw ApiError.badRequest('Meeting ID or join code is required');
 
   const Meeting = require('../models/Meeting');
-  const meeting = await Meeting.findOne({ roomId: roomId.trim() });
-  if (!meeting) throw ApiError.notFound('Meeting not found. Check the room code.');
+  const q = code.trim();
+
+  // Accept meetingId (e.g. "ABCD-1234"), joinCode, or raw roomId (UUID)
+  const meeting = await Meeting.findOne({
+    $or: [{ meetingId: q }, { joinCode: q }, { roomId: q }],
+  });
+
+  if (!meeting) throw ApiError.notFound('Meeting not found. Check the ID or code.');
   if (meeting.status === MEETING_STATUS.ENDED) {
     throw ApiError.badRequest('This meeting has already ended.');
   }
 
-  // Atomic add — no read-modify-write race condition
   await Meeting.findByIdAndUpdate(
     meeting._id,
     { $addToSet: { participants: userId } },
     { new: true }
   );
 
-  return Meeting.findById(meeting._id)
+  const populated = await Meeting.findById(meeting._id)
     .populate('host',         'name email avatar')
     .populate('participants', 'name email avatar')
     .lean();
+
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+  return {
+    ...populated,
+    joinLink: `${clientUrl}/lobby?join=${populated.meetingId}`,
+  };
 };
 
 module.exports = {

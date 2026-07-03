@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Hash, Calendar, Clock, Video, ArrowRight, Users } from 'lucide-react';
+import { Plus, Hash, Calendar, Clock, Video, ArrowRight, Users, Copy, Check } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { meetingService } from '../api/meeting.api';
 import { MEETING_ROUTE } from '../constants';
@@ -23,12 +23,21 @@ const Lobby = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [showCreate, setShowCreate] = useState(searchParams.get('new') === '1');
-  const [showStart, setShowStart] = useState(false);
+  const [showStart, setShowStart] = useState(searchParams.get('join') !== null);
+  const [createdMeeting, setCreatedMeeting] = useState<any>(null);
   const [startMeetingId, setStartMeetingId] = useState('');
   const [title, setTitle] = useState('');
-  const [joinId, setJoinId] = useState('');
+  const [joinId, setJoinId] = useState(searchParams.get('join') ?? '');
+  const [copied, setCopied] = useState<'id' | 'code' | 'link' | null>(null);
   const qc = useQueryClient();
   const user = useAppSelector((state: any) => state.auth.user);
+
+  const copyToClipboard = (text: string, type: 'id' | 'code' | 'link') => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(type);
+      setTimeout(() => setCopied(null), 2000);
+    });
+  };
 
   // Fetch meetings — API returns { success, data, ... } which is unwrapped by axios to { success, data }
   // so meetings are at response.data
@@ -44,14 +53,13 @@ const Lobby = () => {
     },
     onSuccess: (response: any) => {
       qc.invalidateQueries({ queryKey: ['meetings'] });
-      toast.success('Meeting created! Redirecting...');
-      const meeting = response?.data || response;
-      const meetingId = meeting?._id || meeting?.id || meeting?.roomId;
-      if (meetingId) {
-        setShowCreate(false);
-        navigate(MEETING_ROUTE(meetingId));
+      // axios interceptor unwraps res.data → response is ApiResponse body {success, data: meeting}
+      const meeting = response?.data ?? response;
+      if (meeting?._id) {
+        setCreatedMeeting(meeting);
+        toast.success('Meeting created!');
       } else {
-        toast.error('Meeting created but could not get ID for redirection');
+        toast.error('Meeting created but could not retrieve details');
       }
     },
     onError: (err: any) => {
@@ -81,7 +89,16 @@ const Lobby = () => {
 
   const handleCreate = () => {
     if (createMutation.isPending) return;
+    setCreatedMeeting(null);
     createMutation.mutate({ title: title.trim() || 'Quick Meeting', tenantId: user?.tenantId });
+  };
+
+  const handleJoinCreated = () => {
+    if (createdMeeting?._id) {
+      setShowCreate(false);
+      setCreatedMeeting(null);
+      navigate(MEETING_ROUTE(createdMeeting._id));
+    }
   };
 
   const handleJoin = async () => {
@@ -90,16 +107,17 @@ const Lobby = () => {
 
     try {
       const response: any = await meetingService.join(code);
-      const meeting = response?.data || response;
-      const meetingId = meeting?._id || meeting?.id;
-      if (meetingId) {
+      // axios interceptor unwraps res.data → response is ApiResponse body {success, data: meeting}
+      const meeting = response?.data ?? response;
+      const id = meeting?._id || meeting?.id;
+      if (id) {
         toast.success('Joined meeting!');
-        navigate(MEETING_ROUTE(meetingId));
+        navigate(MEETING_ROUTE(id));
       } else {
-        navigate(MEETING_ROUTE(code));
+        toast.error('Could not retrieve meeting details');
       }
     } catch (err: any) {
-      toast.error(err?.message || 'Meeting not found. Check the code and try again.');
+      toast.error(err?.message || 'Meeting not found. Check the ID or code and try again.');
     }
   };
 
@@ -181,37 +199,90 @@ const Lobby = () => {
       </div>
 
       {/* Create modal */}
-      <Modal open={showCreate} onClose={() => { setShowCreate(false); }} title="Create New Meeting">
+      <Modal open={showCreate} onClose={() => { setShowCreate(false); setCreatedMeeting(null); }} title="Create New Meeting">
         <div className="flex flex-col gap-4">
-          <div>
-            <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1.5">Meeting Title</label>
-            <input
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
-              placeholder="e.g. Product Sync, Sprint Review..."
-              className="input-light"
-              disabled={createMutation.isPending}
-              autoFocus
-            />
-          </div>
-          <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              className="flex-1"
-              onClick={() => setShowCreate(false)}
-              disabled={createMutation.isPending}
-            >
-              Cancel
-            </Button>
-            <Button
-              loading={createMutation.isPending}
-              onClick={handleCreate}
-              className="flex-1 gap-2"
-            >
-              <Video size={14} /> Create & Join
-            </Button>
-          </div>
+          {!createdMeeting ? (
+            <>
+              <div>
+                <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1.5">Meeting Title</label>
+                <input
+                  value={title}
+                  onChange={e => setTitle(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }}
+                  placeholder="e.g. Product Sync, Sprint Review..."
+                  className="input-light"
+                  disabled={createMutation.isPending}
+                  autoFocus
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => setShowCreate(false)}
+                  disabled={createMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  loading={createMutation.isPending}
+                  onClick={handleCreate}
+                  className="flex-1 gap-2"
+                >
+                  <Video size={14} /> Create Meeting
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-col gap-3">
+                <p className="text-sm font-semibold text-[var(--color-text)]">Meeting ready! Share these details:</p>
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
+                    <div>
+                      <p className="text-[10px] text-[var(--color-text-muted)] font-medium">Meeting ID</p>
+                      <p className="text-sm font-mono font-bold text-[var(--color-text)]">{createdMeeting.meetingId}</p>
+                    </div>
+                    <button onClick={() => copyToClipboard(createdMeeting.meetingId, 'id')} className="p-1.5 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
+                      {copied === 'id' ? <Check size={14} className="text-green-500" /> : <Copy size={14} className="text-[var(--color-text-muted)]" />}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
+                    <div>
+                      <p className="text-[10px] text-[var(--color-text-muted)] font-medium">Join Code</p>
+                      <p className="text-sm font-mono font-bold text-[var(--color-text)]">{createdMeeting.joinCode}</p>
+                    </div>
+                    <button onClick={() => copyToClipboard(createdMeeting.joinCode, 'code')} className="p-1.5 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
+                      {copied === 'code' ? <Check size={14} className="text-green-500" /> : <Copy size={14} className="text-[var(--color-text-muted)]" />}
+                    </button>
+                  </div>
+
+                  {createdMeeting.joinLink && (
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] text-[var(--color-text-muted)] font-medium">Join Link</p>
+                        <p className="text-xs font-mono text-[var(--color-text)] truncate">{createdMeeting.joinLink}</p>
+                      </div>
+                      <button onClick={() => copyToClipboard(createdMeeting.joinLink, 'link')} className="p-1.5 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors ml-2 flex-shrink-0">
+                        {copied === 'link' ? <Check size={14} className="text-green-500" /> : <Copy size={14} className="text-[var(--color-text-muted)]" />}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <Button variant="secondary" className="flex-1" onClick={() => { setShowCreate(false); setCreatedMeeting(null); }}>
+                  Close
+                </Button>
+                <Button className="flex-1 gap-2" onClick={handleJoinCreated}>
+                  <Video size={14} /> Join Now
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </Modal>
 
@@ -219,13 +290,13 @@ const Lobby = () => {
       <Modal open={showStart} onClose={() => setShowStart(false)} title="Start or Join Meeting">
         <div className="flex flex-col gap-6">
           <div>
-            <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1.5">Join by Room ID or Link</label>
+            <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1.5">Join by Meeting ID or Join Code</label>
             <div className="flex gap-2">
               <input
                 value={joinId}
                 onChange={e => setJoinId(e.target.value)}
                 onKeyDown={e => { if(e.key === 'Enter') handleJoin(); }}
-                placeholder="Enter room ID..."
+                placeholder="e.g. ABCD-1234 or join code..."
                 className="input-light flex-1"
               />
               <Button onClick={handleJoin} variant="secondary">Join</Button>
