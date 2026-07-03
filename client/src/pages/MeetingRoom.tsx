@@ -225,7 +225,7 @@ const MeetingRoom = () => {
           <div className="flex-1 relative overflow-hidden">
             <VideoGrid localStream={localStream} remoteStreams={remoteStreams} />
           </div>
-          <Controls startScreenShare={startScreenShare} stopScreenShare={stopScreenShare} stopAllTracks={stopAllTracks} />
+          <Controls localStream={localStream} startScreenShare={startScreenShare} stopScreenShare={stopScreenShare} stopAllTracks={stopAllTracks} />
         </div>
 
         {/* Right panel — hidden on mobile (xs), slides from right on sm+ */}

@@ -44,12 +44,13 @@ const ControlBtn = ({ icon: Icon, label, onClick, active, danger, disabled, acti
 const REACTIONS = ['👍', '❤️', '😂', '🎉', '👏', '🔥'];
 
 interface ControlsProps {
+  localStream?: MediaStream | null;
   startScreenShare?: () => Promise<void>;
   stopScreenShare?: () => void;
   stopAllTracks?: () => void;
 }
 
-const Controls = ({ startScreenShare, stopScreenShare, stopAllTracks }: ControlsProps) => {
+const Controls = ({ localStream, startScreenShare, stopScreenShare, stopAllTracks }: ControlsProps) => {
   const { id: meetingId } = useParams();
   const {
     isMuted, isVideoOff, isScreenSharing, isRecording,
@@ -57,7 +58,7 @@ const Controls = ({ startScreenShare, stopScreenShare, stopAllTracks }: Controls
     currentMeeting,
   } = useMeetingStore();
   const { leaveMeeting } = useMeeting(currentMeeting?.roomId);
-  const { startRecording, stopRecording } = useRecording(meetingId ?? '');
+  const { startRecording, stopRecording } = useRecording(meetingId ?? '', localStream ?? null);
   const [handRaised, setHandRaised]   = useState(false);
   const [showReactions, setShowReactions] = useState(false);
 

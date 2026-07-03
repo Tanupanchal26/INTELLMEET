@@ -367,11 +367,27 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     if (socket?.connected && roomId) {
       socket.emit('meeting:screen-share', { roomId, isSharing: false });
     }
+    
     if (localStreamRef.current) {
-      replaceVideoTrackInPeers(localStreamRef.current.getVideoTracks()[0] ?? null);
-      setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+      localStreamRef.current.getVideoTracks().forEach(t => localStreamRef.current!.removeTrack(t));
     }
-  }, [socket, roomId, setScreenSharing, replaceVideoTrackInPeers]);
+
+    if (!isVideoOff) {
+      navigator.mediaDevices.getUserMedia({ video: true }).then(vStream => {
+        const vTrack = vStream.getVideoTracks()[0];
+        if (!localStreamRef.current) localStreamRef.current = new MediaStream();
+        localStreamRef.current.addTrack(vTrack);
+        replaceVideoTrackInPeers(vTrack);
+        setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+      }).catch(() => {
+        replaceVideoTrackInPeers(null);
+        setLocalStream(new MediaStream(localStreamRef.current?.getTracks() || []));
+      });
+    } else {
+      replaceVideoTrackInPeers(null);
+      setLocalStream(new MediaStream(localStreamRef.current?.getTracks() || []));
+    }
+  }, [socket, roomId, setScreenSharing, replaceVideoTrackInPeers, isVideoOff]);
 
   const startScreenShare = useCallback(async () => {
     try {
@@ -383,10 +399,17 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
 
       replaceVideoTrackInPeers(screenTrack);
 
-      const preview = new MediaStream([screenTrack]);
-      const audioTrack = localStreamRef.current?.getAudioTracks()[0];
-      if (audioTrack) preview.addTrack(audioTrack);
-      setLocalStream(preview);
+      if (localStreamRef.current) {
+        localStreamRef.current.getVideoTracks().forEach(t => {
+          t.stop();
+          localStreamRef.current!.removeTrack(t);
+        });
+        localStreamRef.current.addTrack(screenTrack);
+      } else {
+        localStreamRef.current = new MediaStream([screenTrack]);
+      }
+      
+      setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
       setScreenSharing(true);
 
       if (socket?.connected && roomId) {

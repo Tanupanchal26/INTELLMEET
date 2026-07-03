@@ -5,38 +5,31 @@ import { recordingService } from '../api/recording.api';
 import { getSocket } from '../utils/socket';
 import toast from 'react-hot-toast';
 
-export const useRecording = (meetingId: string) => {
+export const useRecording = (meetingId: string, localStream: MediaStream | null) => {
   const { isRecording, toggleRecording } = useMeetingStore();
   const user = useAppSelector((s) => s.auth.user);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
   const startRecording = async () => {
     try {
-      // 1. Prompt user for screen to record
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      streamRef.current = stream;
+      if (!localStream) {
+        toast.error('No stream available to record.');
+        return;
+      }
 
       // 2. Initialize MediaRecorder
       const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
         ? 'video/webm;codecs=vp9'
         : 'video/webm';
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = new MediaRecorder(localStream, { mimeType });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data);
-        }
-      };
-
-      // When the user clicks "Stop sharing" on the browser native banner
-      stream.getVideoTracks()[0].onended = () => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          stopRecording();
         }
       };
 
@@ -62,12 +55,6 @@ export const useRecording = (meetingId: string) => {
       toggleRecording(); // isRecording = false
       const blob = new Blob(chunksRef.current, { type: 'video/webm' });
       chunksRef.current = [];
-
-      // Stop the stream tracks
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
-      }
 
       // Broadcast recording stopped
       const socket = getSocket();
