@@ -28,6 +28,15 @@ exports.exportAnalyticsCSV = asyncHandler(async (req, res) => {
   res.status(200).send(csvString);
 });
 
+exports.exportMarkdown = asyncHandler(async (req, res) => {
+  const { meetingId } = req.params;
+  const markdown = await exportService.generateMarkdown(meetingId, req.tenantId);
+
+  res.setHeader('Content-Type', 'text/markdown');
+  res.setHeader('Content-Disposition', `attachment; filename=meeting-${meetingId}.md`);
+  res.status(200).send(markdown);
+});
+
 exports.exportMinutesDOCX = asyncHandler(async (req, res) => {
   const { meetingId } = req.params;
   const docxBuffer = await exportService.generateSummaryDOCX(meetingId, req.tenantId);

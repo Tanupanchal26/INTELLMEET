@@ -18,12 +18,8 @@
     "testMatch": [
       "**/tests/**/*.test.ts"
     ],
-    "globals": {
-      "ts-jest": {
-        "tsconfig": {
-          "strict": false
-        }
-      }
+    "transform": {
+      "^.+\\.tsx?$": ["ts-jest", { "tsconfig": { "strict": false } }]
     },
     "coverageDirectory": "coverage",
     "coveragePathIgnorePatterns": [

@@ -72,4 +72,3 @@ export const withRetry = async <T>(
   throw new Error('withRetry: exhausted retries');
 };
 
-export { getClient, withRetry };
