@@ -8,9 +8,12 @@ const ParticipantList = () => {
   const user = useAppSelector((s) => s.auth.user);
   const isHostUser = user?.id === currentMeeting?.host;
 
+  // Filter out the local user — they are rendered as the hardcoded local entry below
+  const remoteParticipants = participants.filter(p => p.id !== user?.id);
+
   const all = [
     { id: user?.id || 'local', name: user?.name || 'You', isMuted, isVideoOff, isHost: isHostUser ?? false, socketId: 'local', isLocal: true },
-    ...participants.map(p => ({ ...p, isLocal: false }))
+    ...remoteParticipants.map(p => ({ ...p, isLocal: false }))
   ];
 
   return (

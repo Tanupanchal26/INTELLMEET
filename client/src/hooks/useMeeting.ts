@@ -22,16 +22,20 @@ export const useMeeting = (roomId?: string) => {
   useEffect(() => {
     if (!socket || !roomId) return;
 
-    const onUserJoined  = (data: any) => addParticipant({
-      id:       sanitize(data?.user?.id   ?? data?.id),
-      name:     sanitize(data?.user?.name ?? data?.name ?? 'Unknown'),
-      avatar:   data?.user?.avatar ?? data?.avatar,
-      socketId: sanitize(data?.socketId),
-      isMuted:    Boolean(data?.isMuted),
-      isVideoOff: Boolean(data?.isVideoOff ?? true),
-      isScreenSharing: Boolean(data?.isScreenSharing),
-      isHost:   Boolean(data?.isHost),
-    });
+    const onUserJoined  = (data: any) => {
+      // Never add ourselves — the local tile is rendered separately
+      if (data?.socketId === socket.id) return;
+      addParticipant({
+        id:       sanitize(data?.user?.id   ?? data?.id),
+        name:     sanitize(data?.user?.name ?? data?.name ?? 'Unknown'),
+        avatar:   data?.user?.avatar ?? data?.avatar,
+        socketId: sanitize(data?.socketId),
+        isMuted:    Boolean(data?.isMuted),
+        isVideoOff: Boolean(data?.isVideoOff ?? true),
+        isScreenSharing: Boolean(data?.isScreenSharing),
+        isHost:   Boolean(data?.isHost),
+      });
+    };
     const onUserLeft    = ({ socketId }: any)   => removeParticipant(sanitize(socketId));
     const onTranscript  = (chunk: string)       => appendTranscript(sanitize(chunk));
     const onMediaState  = ({ socketId, isMuted, isVideoOff, isScreenSharing }: any) =>
@@ -42,7 +46,9 @@ export const useMeeting = (roomId?: string) => {
       });
     const onRaiseHand   = (_data: any) => { /* visual-only; no store mutation needed */ };
     const onParticipantsList = (list: any[]) => {
-      setParticipants(list.map(p => ({
+      // Filter out our own socket — the local tile is rendered separately
+      const others = (list ?? []).filter(p => p.socketId !== socket.id);
+      setParticipants(others.map(p => ({
         id: sanitize(p.id),
         name: sanitize(p.name),
         avatar: p.avatar,

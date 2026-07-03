@@ -79,9 +79,12 @@ const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream |
   const { participants, isVideoOff, isMuted, isScreenSharing } = useMeetingStore();
   const user = useAppSelector((s) => s.auth.user);
   
+  // Filter out the local user from participants — they are rendered as the hardcoded local tile
+  const remoteParticipants = participants.filter(p => p.id !== user?.id);
+  
   const allTiles = [
     { id: 'local', name: user?.name || 'You', isMuted, isVideoOff, isScreenSharing, isLocal: true, isActive: true, stream: localStream },
-    ...participants.map(p => ({
+    ...remoteParticipants.map(p => ({
       id: p.socketId,
       name: p.name,
       isMuted: p.isMuted,
