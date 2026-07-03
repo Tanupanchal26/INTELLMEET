@@ -12,8 +12,8 @@ exports.googleCallback = async (req, res) => {
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure:   config.isProd,
-      sameSite: 'lax',
+      secure:   true,
+      sameSite: 'none',
       maxAge:   AUTH.COOKIE_MAX_AGE,
       path:     '/',
     });

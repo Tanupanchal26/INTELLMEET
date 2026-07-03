@@ -67,8 +67,8 @@ export const hashToken = (token: string): string =>
 export const setRefreshCookie = (res: Response, refreshToken: string): void => {
   res.cookie(COOKIE_NAMES.REFRESH_TOKEN, refreshToken, {
     httpOnly: true,
-    secure:   config.isProd,
-    sameSite: config.isProd ? 'strict' : 'lax',
+    secure:   true,
+    sameSite: 'none',
     maxAge:   AUTH.COOKIE_MAX_AGE,
     path:     '/',
   });
@@ -77,8 +77,8 @@ export const setRefreshCookie = (res: Response, refreshToken: string): void => {
 export const clearRefreshCookie = (res: Response): void => {
   res.clearCookie(COOKIE_NAMES.REFRESH_TOKEN, {
     httpOnly: true,
-    secure:   config.isProd,
-    sameSite: config.isProd ? 'strict' : 'lax',
+    secure:   true,
+    sameSite: 'none',
     path:     '/',
   });
 };
