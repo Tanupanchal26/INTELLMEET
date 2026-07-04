@@ -4,9 +4,10 @@ const mongoose = require('mongoose');
 // ── Sub-schemas ───────────────────────────────────────────────────────────────
 
 const transcriptChunkSchema = new mongoose.Schema({
-  text:    { type: String, required: true, maxlength: 2000 },
-  speaker: { type: String, default: '' },
-  ts:      { type: Number, default: Date.now },
+  text:      { type: String, required: true, maxlength: 2000 },
+  speaker:   { type: String, default: '' },
+  speakerId: { type: String, default: '' },
+  ts:        { type: Number, default: Date.now },
 }, { _id: false });
 
 const actionItemSchema = new mongoose.Schema({

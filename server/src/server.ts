@@ -30,6 +30,7 @@ const io = new Server(server, {
 const start = async () => {
   try {
     await connectDB();
+    app.set('io', io);
     initSockets(io);
 
     server.listen(config.port, '0.0.0.0', () => {

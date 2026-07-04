@@ -17,7 +17,8 @@ const teamCtrl        = require('../../controllers/team') as any;
 const channelCtrl     = require('../../controllers/channel') as any;
 const notifCtrl       = require('../../controllers/notification') as any;
 const chatCtrl        = require('../../controllers/chat') as any;
-const aiCtrl          = require('../../controllers/ai') as any;
+const aiCtrl              = require('../../controllers/ai') as any;
+const transcriptionCtrl   = require('../../controllers/transcription') as any;
 const taskCtrl        = require('../../controllers/task') as any;
 const analyticsCtrl   = require('../../controllers/analytics') as any;
 const exportCtrl      = require('../../controllers/export') as any;
@@ -143,6 +144,8 @@ router.delete('/ai/:meetingId/summary',                     aiCtrl.deleteSummary
 // Transcript
 router.get('/ai/:meetingId/transcript',                     aiCtrl.getTranscript);
 router.post('/ai/:meetingId/transcript',                    aiCtrl.saveTranscript);
+router.post('/ai/:meetingId/transcribe-audio',  upload.single('audio'), transcriptionCtrl.transcribeAudio);
+router.post('/ai/:meetingId/consolidate-transcript',        transcriptionCtrl.consolidateTranscript);
 // Action Items
 router.get('/ai/:meetingId/action-items',                   aiCtrl.getActionItems);
 router.put('/ai/:meetingId/action-items/:itemId',           aiCtrl.updateActionItem);

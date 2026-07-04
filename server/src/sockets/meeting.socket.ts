@@ -4,6 +4,7 @@ const MeetingNote = require('../models/MeetingNote');
 const Meeting     = require('../models/Meeting');
 const AIResult    = require('../models/AIResult');
 const aiService   = require('../services/ai.service');
+const transcriptionService = require('../services/transcription.service');
 const logger      = require('../shared/utils/logger').default;
 
 type MeetingUser = {
@@ -231,7 +232,7 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
     });
   });
 
-  // ── Transcript chunk ──────────────────────────────────────────────────────
+  // ── Transcript chunk (text — from browser SpeechRecognition) ───────────────
   const MAX_CHUNK_LENGTH = 2000;
   socket.on('meeting:transcript-chunk', async ({ meetingId, chunk }: { meetingId: unknown; chunk: unknown }) => {
     if (!isValidId(meetingId) || !socket.user?.id || typeof chunk !== 'string' || !chunk.trim()) return;
@@ -242,17 +243,57 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
         { meeting: meetingId },
         {
           $setOnInsert: { meeting: meetingId },
-          $push: { transcriptChunks: { text: safeChunk, speaker: socket.user.name, ts: Date.now() } },
+          $push: { transcriptChunks: { text: safeChunk, speaker: socket.user.name, speakerId: socket.user.id, ts: Date.now() } },
         },
         { upsert: true }
       );
       io.to(`meeting:${meetingId}`).emit('meeting:transcript-chunk', {
-        chunk:   safeChunk,
-        speaker: socket.user.name,
-        userId:  socket.user.id,
+        chunk:    safeChunk,
+        speaker:  socket.user.name,
+        userId:   socket.user.id,
+        source:   'browser',
       });
     } catch (err) {
       logger.error(`[SOCKET] transcript-chunk error: ${(err as Error).message.replace(/[\r\n]/g, ' ')}`);
+    }
+  });
+
+  // ── Audio chunk (binary — for server-side Whisper transcription) ─────────
+  const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+  socket.on('meeting:audio-chunk', async ({ meetingId, audio, filename }: {
+    meetingId: unknown; audio: unknown; filename?: unknown;
+  }) => {
+    if (!isValidId(meetingId) || !socket.user?.id) return;
+    if (!Buffer.isBuffer(audio) && !(audio instanceof Uint8Array)) return;
+
+    const buf = Buffer.isBuffer(audio) ? audio : Buffer.from(audio as Uint8Array);
+    if (buf.length < 1000 || buf.length > MAX_AUDIO_BYTES) return;
+
+    try {
+      const safeFilename = typeof filename === 'string'
+        ? filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64)
+        : 'audio.webm';
+
+      const { text, segments } = await transcriptionService.processAudioChunk(
+        meetingId as string,
+        socket.user.name,
+        socket.user.id,
+        buf,
+        safeFilename,
+      );
+
+      if (!text) return;
+
+      io.to(`meeting:${meetingId}`).emit('meeting:transcript-chunk', {
+        chunk:    text,
+        speaker:  socket.user.name,
+        userId:   socket.user.id,
+        segments,
+        source:   'whisper',
+      });
+    } catch (err) {
+      logger.error(`[SOCKET] audio-chunk transcription error: ${(err as Error).message.replace(/[\r\n]/g, ' ')}`);
+      socket.emit('meeting:transcript-error', { message: 'Transcription failed. Will retry.' });
     }
   });
 
@@ -310,9 +351,10 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
 
       // Fire-and-forget AI pipeline — never blocks the response
       Promise.all([
+        transcriptionService.consolidateTranscript(meetingDbId),
         aiService.summarize(meetingDbId),
         aiService.getActionItems(meetingDbId),
-      ]).then(([summary, actionItems]: [unknown, unknown]) => {
+      ]).then(([, summary, actionItems]: [unknown, unknown, unknown]) => {
         io.to(`meeting:${meetingDbId}`).emit('ai:summary-ready', { summary, actionItems });
       }).catch((aiErr: Error) => {
         logger.error(`[SOCKET] meeting:end AI pipeline error: ${aiErr.message}`);
