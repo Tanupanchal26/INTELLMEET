@@ -111,6 +111,7 @@ const meetingSchema = new Schema<IMeeting>(
     summary:      { type: String, default: '' },
     actionItems:  [{ text: String, assignee: String, dueDate: Date }],
     sentiment:    { type: String, default: '' },
+    reminderSent: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, CheckCheck, Trash2, Video, Users, AtSign, CheckSquare, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Check, CheckCheck, Trash2, Video, Users, AtSign, CheckSquare, Info, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { notificationService, type Notification } from '../api/notification.api';
 import Button from '../components/common/Button';
@@ -15,21 +16,36 @@ const ICONS: Record<string, React.ElementType> = {
   team_invite: Users, team_role_changed: Users,
   channel_mention: AtSign, message_reply: AtSign,
   task_assigned: CheckSquare, task_due: CheckSquare,
+  ai_summary_ready: Sparkles, action_item_assigned: CheckSquare,
   system: Info,
 };
 
 const ICON_STYLE: Record<string, string> = {
-  meeting_invite: 'bg-indigo-50 text-indigo-700 border border-indigo-150',
-  meeting_started: 'bg-emerald-50 text-emerald-700 border border-emerald-150',
-  meeting_ended: 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border border-[var(--color-border)]',
-  meeting_reminder: 'bg-amber-50 text-amber-700 border border-amber-150',
-  team_invite: 'bg-blue-50 text-blue-700 border border-blue-150',
-  team_role_changed: 'bg-orange-50 text-orange-700 border border-orange-150',
-  channel_mention: 'bg-violet-50 text-violet-700 border border-violet-150',
-  message_reply: 'bg-violet-50 text-violet-700 border border-violet-150',
-  task_assigned: 'bg-blue-50 text-blue-700 border border-blue-150',
-  task_due: 'bg-red-50 text-red-700 border border-red-150',
-  system: 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border border-[var(--color-border)]',
+  meeting_invite:       'bg-indigo-50 text-indigo-700 border border-indigo-150',
+  meeting_started:      'bg-emerald-50 text-emerald-700 border border-emerald-150',
+  meeting_ended:        'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border border-[var(--color-border)]',
+  meeting_reminder:     'bg-amber-50 text-amber-700 border border-amber-150',
+  team_invite:          'bg-blue-50 text-blue-700 border border-blue-150',
+  team_role_changed:    'bg-orange-50 text-orange-700 border border-orange-150',
+  channel_mention:      'bg-violet-50 text-violet-700 border border-violet-150',
+  message_reply:        'bg-violet-50 text-violet-700 border border-violet-150',
+  task_assigned:        'bg-blue-50 text-blue-700 border border-blue-150',
+  task_due:             'bg-red-50 text-red-700 border border-red-150',
+  ai_summary_ready:     'bg-indigo-50 text-indigo-700 border border-indigo-150',
+  action_item_assigned: 'bg-teal-50 text-teal-700 border border-teal-150',
+  system:               'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border border-[var(--color-border)]',
+};
+
+const getDeepLink = (n: Notification): string | null => {
+  if (n.link) return n.link;
+  if (n.refModel === 'Meeting' && n.refId) {
+    if (n.type === 'ai_summary_ready') return `/ai-summary/${n.refId}`;
+    if (n.type === 'action_item_assigned') return `/ai-summary/${n.refId}?tab=action-items`;
+    return `/lobby?join=${n.refId}`;
+  }
+  if (n.refModel === 'Task' && n.refId) return `/tasks?highlight=${n.refId}`;
+  if (n.refModel === 'Team' && n.refId) return `/teams/${n.refId}`;
+  return null;
 };
 
 const timeAgo = (iso: string) => {
@@ -50,16 +66,23 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'mentions', label: 'Mentions' },
 ];
 
-const filterNotif = (n: Notification, f: Filter) => {
-  if (f === 'unread')   return !n.isRead;
-  if (f === 'meetings') return n.type.startsWith('meeting');
-  if (f === 'tasks')    return n.type.startsWith('task');
-  if (f === 'mentions') return n.type.includes('mention') || n.type.includes('reply');
-  return true;
-};
+  const filterNotif = (n: Notification) => {
+    if (filter === 'unread')   return !n.isRead;
+    if (filter === 'meetings') return n.type.startsWith('meeting');
+    if (filter === 'tasks')    return n.type.startsWith('task') || n.type === 'action_item_assigned';
+    if (filter === 'mentions') return n.type.includes('mention') || n.type.includes('reply');
+    return true;
+  };
+
+  const handleClick = async (notif: Notification) => {
+    if (!notif.isRead) markRead.mutate(notif._id);
+    const link = getDeepLink(notif);
+    if (link) navigate(link);
+  };
 
 const Notifications = () => {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState<Filter>('all');
 
   const { data, isLoading } = useQuery({
@@ -68,7 +91,7 @@ const Notifications = () => {
     refetchInterval: 30000,
   });
 
-  const notifications = (data?.data ?? []).filter(n => filterNotif(n, filter));
+  const notifications = (data?.data ?? []).filter(n => filterNotif(n));
   const unreadCount   = data?.unread ?? 0;
 
   const markRead = useMutation({
@@ -217,8 +240,9 @@ const Notifications = () => {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 6, height: 0 }}
                   transition={{ duration: 0.22, delay: i * 0.025 }}
+                  onClick={() => handleClick(notif)}
                   className={clsx(
-                    'flex items-start gap-4 p-4 group transition-colors relative',
+                    'flex items-start gap-4 p-4 group transition-colors relative cursor-pointer',
                     notif.isRead
                       ? 'hover:bg-black/5'
                       : 'bg-indigo-50/25 hover:bg-indigo-50/50'

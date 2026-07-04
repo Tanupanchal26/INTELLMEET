@@ -45,6 +45,12 @@ const smartNotesSchema = new mongoose.Schema({
   notesMarkdown:    { type: String, default: '', maxlength: 20000 },
 }, { _id: false });
 
+const followUpSuggestionSchema = new mongoose.Schema({
+  text:     { type: String, required: true, maxlength: 300 },
+  priority: { type: String, enum: ['high', 'medium', 'low'], default: 'medium' },
+  owner:    { type: String, default: null },
+}, { _id: true });
+
 // ── Main schema ───────────────────────────────────────────────────────────────
 
 const aiResultSchema = new mongoose.Schema({
@@ -55,6 +61,7 @@ const aiResultSchema = new mongoose.Schema({
     unique:   true,
     index:    true,
   },
+  participants: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
 
   // Transcript
   transcript:       { type: String, default: '' },
@@ -67,7 +74,8 @@ const aiResultSchema = new mongoose.Schema({
   actionItems:   { type: [actionItemSchema], default: [] },
   decisions:     { type: [decisionSchema],   default: [] },
   keywords:      { type: keywordsSchema,     default: () => ({}) },
-  smartNotes:    { type: smartNotesSchema,   default: () => ({}) },
+  smartNotes:          { type: smartNotesSchema,              default: () => ({}) },
+  followUpSuggestions: { type: [followUpSuggestionSchema],     default: [] },
 
   // Processing state
   processingStatus: {

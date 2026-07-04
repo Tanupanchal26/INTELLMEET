@@ -27,11 +27,38 @@ const io = new Server(server, {
   },
 });
 
+// ── Meeting reminder scheduler (runs every minute) ──────────────────────────
+const startReminderScheduler = () => {
+  const notifService = require('./services/notification.service');
+  const Meeting = require('./models/Meeting');
+  setInterval(async () => {
+    try {
+      const now = new Date();
+      const in15 = new Date(now.getTime() + 15 * 60 * 1000);
+      const in16 = new Date(now.getTime() + 16 * 60 * 1000);
+      const meetings = await Meeting.find({
+        status: 'scheduled',
+        scheduledAt: { $gte: in15, $lt: in16 },
+        reminderSent: { $ne: true },
+      }).select('_id title tenantId meetingId participants host scheduledAt');
+      for (const m of meetings) {
+        const ids = [...new Set([String(m.host), ...(m.participants || []).map(String)])];
+        notifService.notifyMeetingReminder(m, ids).catch(() => {});
+        await Meeting.findByIdAndUpdate(m._id, { reminderSent: true });
+      }
+    } catch { /* non-critical */ }
+  }, 60_000);
+};
+
 const start = async () => {
   try {
     await connectDB();
     app.set('io', io);
     initSockets(io);
+    // Inject io into notification service for real-time push
+    const notifService = require('./services/notification.service');
+    notifService.init(io);
+    startReminderScheduler();
 
     server.listen(config.port, '0.0.0.0', () => {
       logger.info(`[SERVER] IntellMeet API running on port ${config.port} [${config.env}]`);

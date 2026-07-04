@@ -12,6 +12,8 @@ const NOTIF_TYPES = [
   'message_reply',
   'task_assigned',
   'task_due',
+  'ai_summary_ready',
+  'action_item_assigned',
   'system',
 ];
 
@@ -25,7 +27,7 @@ const notificationSchema = new mongoose.Schema({
   body:    { type: String, default: '', maxlength: 500 },
 
   // Polymorphic reference — the resource this notification links to
-  refModel: { type: String, enum: ['Meeting', 'Team', 'Channel', 'Message', 'Task'], default: null },
+  refModel: { type: String, enum: ['Meeting', 'Team', 'Channel', 'Message', 'Task', 'AIResult'], default: null },
   refId:    { type: mongoose.Schema.Types.ObjectId, default: null },
   link:     { type: String, default: '' },
 

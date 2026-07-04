@@ -2,13 +2,17 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { lazy, Suspense, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { useAppDispatch, useAppSelector } from './hooks/useAppDispatch';
 import { clearAuth, refreshAccessToken, setCredentials, setInitialized } from './store/auth/auth.slice';
+import { pushNotification } from './store/notifications/notification.slice';
 import { authService } from './api/auth.api';
 import { STORAGE_KEYS } from './constants';
+import { useSocket } from './hooks/useSocket';
 import AppRoutes from './app/router';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { initSentry } from './utils/sentry';
+import type { Notification } from './api/notification.api';
 import './styles/global.css';
 
 const DevNavigator = import.meta.env.DEV
@@ -25,6 +29,19 @@ const IS_DEV = import.meta.env.DEV;
 const AuthSync = () => {
   const dispatch = useAppDispatch();
   const isInitializing = useAppSelector((s) => s.auth.isInitializing);
+  const isAuthenticated = useAppSelector((s) => s.auth.isAuthenticated);
+  const { socket } = useSocket();
+
+  // Global real-time notification listener
+  useEffect(() => {
+    if (!isAuthenticated || !socket) return;
+    const onNew = (notif: Notification) => {
+      dispatch(pushNotification(notif));
+      toast(notif.title, { icon: '🔔', duration: 4000 });
+    };
+    socket.on('notification:new', onNew);
+    return () => { socket.off('notification:new', onNew); };
+  }, [isAuthenticated, socket, dispatch]);
 
   // Validate stored token on app boot — catches expired tokens before any route renders
   useEffect(() => {

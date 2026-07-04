@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Check, X, CheckCheck, Video, Users, AtSign, CheckSquare, Info } from 'lucide-react';
+import { Bell, Check, X, CheckCheck, Video, Users, AtSign, CheckSquare, Info, Sparkles } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../../hooks/useSocket';
 import { notificationService, type Notification } from '../../api/notification.api';
 import { clsx } from 'clsx';
@@ -18,21 +19,36 @@ const ICONS: Record<string, React.ElementType> = {
   team_invite: Users, team_role_changed: Users,
   channel_mention: AtSign, message_reply: AtSign,
   task_assigned: CheckSquare, task_due: CheckSquare,
+  ai_summary_ready: Sparkles, action_item_assigned: CheckSquare,
   system: Info,
 };
 
 const ICON_STYLE: Record<string, string> = {
-  meeting_invite:    'bg-blue-50 text-blue-600',
-  meeting_started:   'bg-emerald-50 text-emerald-600',
-  meeting_ended:     'bg-gray-100 text-gray-500',
-  meeting_reminder:  'bg-amber-50 text-amber-600',
-  team_invite:       'bg-blue-50 text-blue-600',
-  team_role_changed: 'bg-orange-50 text-orange-600',
-  channel_mention:   'bg-purple-50 text-purple-600',
-  message_reply:     'bg-purple-50 text-purple-600',
-  task_assigned:     'bg-blue-50 text-blue-600',
-  task_due:          'bg-red-50 text-red-600',
-  system:            'bg-gray-100 text-gray-500',
+  meeting_invite:       'bg-blue-50 text-blue-600',
+  meeting_started:      'bg-emerald-50 text-emerald-600',
+  meeting_ended:        'bg-gray-100 text-gray-500',
+  meeting_reminder:     'bg-amber-50 text-amber-600',
+  team_invite:          'bg-blue-50 text-blue-600',
+  team_role_changed:    'bg-orange-50 text-orange-600',
+  channel_mention:      'bg-purple-50 text-purple-600',
+  message_reply:        'bg-purple-50 text-purple-600',
+  task_assigned:        'bg-blue-50 text-blue-600',
+  task_due:             'bg-red-50 text-red-600',
+  ai_summary_ready:     'bg-indigo-50 text-indigo-600',
+  action_item_assigned: 'bg-teal-50 text-teal-600',
+  system:               'bg-gray-100 text-gray-500',
+};
+
+const getDeepLink = (n: Notification): string | null => {
+  if (n.link) return n.link;
+  if (n.refModel === 'Meeting' && n.refId) {
+    if (n.type === 'ai_summary_ready') return `/ai-summary/${n.refId}`;
+    if (n.type === 'action_item_assigned') return `/ai-summary/${n.refId}?tab=action-items`;
+    return `/lobby?join=${n.refId}`;
+  }
+  if (n.refModel === 'Task' && n.refId) return `/tasks?highlight=${n.refId}`;
+  if (n.refModel === 'Team' && n.refId) return `/teams/${n.refId}`;
+  return null;
 };
 
 const PANEL_ANIM = {
@@ -47,6 +63,7 @@ const NotificationCenter = () => {
   const panelRef   = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { socket } = useSocket();
+  const navigate   = useNavigate();
 
   const unread = notifications.filter(n => !n.isRead).length;
 
@@ -85,6 +102,12 @@ const NotificationCenter = () => {
   const markAll = async () => {
     await notificationService.markAllRead().catch(() => {});
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+  };
+
+  const handleNotifClick = async (n: Notification) => {
+    if (!n.isRead) await markRead(n._id);
+    const link = getDeepLink(n);
+    if (link) { setOpen(false); navigate(link); }
   };
 
   return (
@@ -185,7 +208,7 @@ const NotificationCenter = () => {
                           <Icon size={14} />
                         </div>
 
-                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => !n.isRead && markRead(n._id)}>
+                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleNotifClick(n)}>
                           <p className={clsx('text-sm font-medium leading-snug', n.isRead ? 'text-gray-500' : 'text-gray-900')}>
                             {n.title}
                           </p>

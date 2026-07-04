@@ -94,6 +94,76 @@ const notifyMeetingStarted = (meeting, participantIds) =>
     channels: ['in_app'],
   });
 
+// ── Meeting reminder notification ───────────────────────────────────────────
+const notifyMeetingReminder = (meeting, participantIds) =>
+  notifyMany(participantIds, {
+    tenantId: meeting.tenantId,
+    type:     'meeting_reminder',
+    title:    `Reminder: "${meeting.title}" starts in 15 minutes`,
+    body:     `Scheduled at ${meeting.scheduledAt ? new Date(meeting.scheduledAt).toLocaleString() : 'TBD'}.`,
+    refModel: 'Meeting',
+    refId:    meeting._id,
+    link:     `/lobby?join=${meeting.meetingId}`,
+    channels: ['in_app'],
+  });
+
+// ── Task assignment notification ──────────────────────────────────────────────
+const notifyTaskAssigned = (task, assigneeId, actorId) =>
+  createNotification({
+    tenantId:  task.tenantId,
+    recipient: assigneeId,
+    actor:     actorId,
+    type:      'task_assigned',
+    title:     `You've been assigned a task: "${task.title}"`,
+    body:      task.description ? task.description.slice(0, 120) : '',
+    refModel:  'Task',
+    refId:     task._id,
+    link:      `/tasks?highlight=${task._id}`,
+    channels:  ['in_app'],
+  });
+
+// ── Action item assigned notification ────────────────────────────────────────
+const notifyActionItemAssigned = (meeting, actionItem, assigneeId, actorId) =>
+  createNotification({
+    tenantId:  meeting.tenantId,
+    recipient: assigneeId,
+    actor:     actorId,
+    type:      'action_item_assigned',
+    title:     `Action item assigned: "${actionItem.text || actionItem.title || 'New action item'}"`,
+    body:      `From meeting: "${meeting.title}"`,
+    refModel:  'Meeting',
+    refId:     meeting._id,
+    link:      `/ai-summary/${meeting._id}?tab=action-items`,
+    channels:  ['in_app'],
+  });
+
+// ── AI summary ready notification ─────────────────────────────────────────────
+const notifyAISummaryReady = (meeting, participantIds) =>
+  notifyMany(participantIds, {
+    tenantId: meeting.tenantId,
+    type:     'ai_summary_ready',
+    title:    `AI summary ready for "${meeting.title}"`,
+    body:     'Your meeting summary, action items, and decisions are ready to review.',
+    refModel: 'Meeting',
+    refId:    meeting._id,
+    link:     `/ai-summary/${meeting._id}`,
+    channels: ['in_app'],
+  });
+
+// ── Channel mention notification ──────────────────────────────────────────────
+const notifyChannelMention = (channel, mentionedUserIds, actorId, messagePreview) =>
+  notifyMany(mentionedUserIds, {
+    tenantId: channel.tenantId,
+    actor:    actorId,
+    type:     'channel_mention',
+    title:    `You were mentioned in #${channel.name}`,
+    body:     messagePreview ? messagePreview.slice(0, 120) : '',
+    refModel: 'Channel',
+    refId:    channel._id,
+    link:     `/teams/${channel.team}/channels/${channel._id}`,
+    channels: ['in_app'],
+  });
+
 // ── Team invite notification ──────────────────────────────────────────────────
 const notifyTeamInvite = (team, newMemberId, actorId) =>
   createNotification({
@@ -130,7 +200,12 @@ module.exports = {
   notifyMany,
   notifyMeetingInvite,
   notifyMeetingStarted,
+  notifyMeetingReminder,
   notifyTeamInvite,
+  notifyTaskAssigned,
+  notifyActionItemAssigned,
+  notifyAISummaryReady,
+  notifyChannelMention,
   getUserNotifications,
   markRead,
   markAllRead,

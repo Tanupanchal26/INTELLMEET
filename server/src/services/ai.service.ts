@@ -1,6 +1,7 @@
 // @ts-nocheck
 const AIResult  = require('../models/AIResult');
 const Meeting   = require('../models/Meeting');
+const notifService = require('./notification.service');
 const { summarize, extractKeywords, extractFollowUpSuggestions } = require('../ai/summarizer');
 const { extractActionItems, extractDecisions } = require('../ai/actionItems');
 const { generateMinutes, generateSmartNotes }  = require('../ai/minutesGenerator');
@@ -79,6 +80,19 @@ exports.summarize = async (meetingId: string, length: 'short' | 'medium' | 'deta
     );
     await Meeting.findByIdAndUpdate(meetingId, { summary });
     await cacheSet(cacheKey, summary);
+
+    // Notify all participants that summary is ready
+    const mtg = await Meeting.findById(meetingId).select('participants host tenantId title meetingId').lean();
+    if (mtg) {
+      const participantIds = [
+        ...new Set([
+          String(mtg.host),
+          ...(mtg.participants || []).map(String),
+        ]),
+      ];
+      notifService.notifyAISummaryReady(mtg, participantIds).catch(() => {});
+    }
+
     return summary;
   } catch (err: any) {
     await AIResult.findOneAndUpdate(
@@ -310,6 +324,22 @@ exports.runFullPipeline = async (meetingId: string) => {
       `ai:minutes:${meetingId}`,
       `ai:followup:${meetingId}`,
     );
+
+    // Notify participants: summary ready
+    const participantIds = [
+      ...new Set([
+        String(meeting.host),
+        ...(meeting.participants || []).map((p: any) => String(p._id || p)),
+      ]),
+    ];
+    notifService.notifyAISummaryReady(meeting, participantIds).catch(() => {});
+
+    // Notify action item assignees
+    for (const item of actionItems) {
+      if (item.assignee) {
+        notifService.notifyActionItemAssigned(meeting, item, item.assignee, null).catch(() => {});
+      }
+    }
 
     return { summary, actionItems, decisions, keywords, followUpSuggestions, minutes, smartNotes };
   } catch (err: any) {

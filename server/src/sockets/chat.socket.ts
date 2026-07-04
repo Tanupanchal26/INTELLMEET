@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 
 const Message = require('../models/Message');
 const Channel = require('../models/Channel');
+const notifService = require('../services/notification.service');
 const { getRedisClient } = require('../config/redis');
 
 const CHANNEL_CACHE_TTL = 60;
@@ -111,6 +112,19 @@ module.exports = (io: Server, socket: ChatSocket): void => {
       const populated = await message.populate('sender', 'name avatar');
       io.to(`channel:${channelId}`).emit('channel:message', populated);
       socket.emit('channel:delivery', { messageId: message._id.toString(), state: 'sent' });
+
+      // Fire mention notifications (fire-and-forget)
+      if (mentions.length) {
+        const mentionedOthers = mentions.filter((uid: string) => uid !== socket.user?.id);
+        if (mentionedOthers.length) {
+          notifService.notifyChannelMention(
+            channel,
+            mentionedOthers,
+            socket.user?.id,
+            content
+          ).catch(() => {});
+        }
+      }
     } catch {
       socket.emit('chat:error', { message: 'Failed to send message' });
     }

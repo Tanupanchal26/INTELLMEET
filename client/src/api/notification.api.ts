@@ -8,7 +8,7 @@ export interface Notification {
   link?: string;
   isRead: boolean;
   readAt?: string;
-  refModel?: string;
+  refModel?: 'Meeting' | 'Team' | 'Channel' | 'Message' | 'Task' | 'AIResult';
   refId?: string;
   actor?: { _id: string; name: string; avatar?: string };
   createdAt: string;

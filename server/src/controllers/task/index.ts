@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express';
 const Task         = require('../../models/Task');
 const TaskActivity = require('../../models/TaskActivity');
 const Team         = require('../../models/Team');
+const notifService = require('../../services/notification.service');
 const asyncHandler = require('../../utils/asyncHandler').default as (fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>) => (req: Request, res: Response, next: NextFunction) => void;
 const ApiResponse  = require('../../utils/ApiResponse').default;
 const ApiError     = require('../../utils/ApiError').default;
@@ -67,6 +68,12 @@ exports.createTask = asyncHandler(async (req: Request, res: Response) => {
   });
   const populated = await task.populate(POPULATE);
   await logActivity(task._id, task.teamId, req.tenantId as string, req.user?._id as string, 'created', { title: task.title });
+
+  // Notify assignee if different from creator
+  if (task.assignedTo && String(task.assignedTo) !== String(req.user?._id)) {
+    notifService.notifyTaskAssigned(task, task.assignedTo, req.user?._id).catch(() => {});
+  }
+
   ApiResponse.created(res, populated, 'Task created');
 });
 
@@ -92,6 +99,14 @@ exports.updateTask = asyncHandler(async (req: Request, res: Response) => {
 
   for (const h of historyEntries) {
     await logActivity(task._id, task.teamId, req.tenantId as string, req.user?._id as string, `${h.field}_changed`, { from: h.from, to: h.to });
+    // Notify new assignee when assignedTo changes
+    if (h.field === 'assignedTo' && h.to && String(h.to) !== String(req.user?._id)) {
+      notifService.notifyTaskAssigned(
+        { ...task.toObject(), title: updated?.title ?? task.title },
+        h.to,
+        req.user?._id
+      ).catch(() => {});
+    }
   }
 
   ApiResponse.ok(res, updated, 'Task updated');
