@@ -39,7 +39,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 // ── Google OAuth ──────────────────────────────────────────────────────────────
 router.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'], prompt: 'select_account' }));
 router.get('/auth/google/callback',
-  passport.authenticate('google', { session: true, failureRedirect: `${process.env.CLIENT_URL}/login?error=google_failed` }),
+  passport.authenticate('google', { session: false, failureRedirect: `${process.env.CLIENT_URL}/login?error=google_failed` }),
   googleAuthCtrl.googleCallback
 );
 
