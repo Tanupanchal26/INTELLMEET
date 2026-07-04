@@ -89,6 +89,14 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       toast.error(message || 'A meeting error occurred.');
     };
 
+    // Re-register listeners and re-emit join after socket reconnects
+    const onReconnect = () => {
+      // Socket event listeners survive reconnect on the same socket object,
+      // but we need to re-join the room since the server drops us on disconnect.
+      // meeting:join is handled by useWebRTC; here we just ensure setInCall stays true.
+      setInCall(true);
+    };
+
     socket.on('meeting:user-joined',  onUserJoined);
     socket.on('meeting:user-left',    onUserLeft);
     socket.on('ai:transcript',        onTranscript);
@@ -98,6 +106,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
     socket.on('meeting:ended-by-host', onMeetingEndedByHost);
     socket.on('meeting:force-end',    onForceEnd);
     socket.on('meeting:error',        onMeetingError);
+    socket.on('connect',              onReconnect);
     setInCall(true);
 
     return () => {
@@ -110,8 +119,9 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       socket.off('meeting:ended-by-host', onMeetingEndedByHost);
       socket.off('meeting:force-end',    onForceEnd);
       socket.off('meeting:error',        onMeetingError);
+      socket.off('connect',              onReconnect);
     };
-  }, [socket, roomId, addParticipant, removeParticipant, setInCall, appendTranscript, updateParticipant, resetMeeting, navigate]);
+  }, [socket, roomId, addParticipant, removeParticipant, setInCall, setParticipants, appendTranscript, updateParticipant, resetMeeting, navigate, qc]);
 
   const leaveMeeting = async (_meetingId?: string) => {
     // Only leave the socket room — do NOT call meetingService.end() which would
