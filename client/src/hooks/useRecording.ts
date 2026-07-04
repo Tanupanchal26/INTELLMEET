@@ -4,6 +4,13 @@ import { recordingService } from '../api/recording.api';
 import { getSocket } from '../utils/socket';
 import toast from 'react-hot-toast';
 
+const SUPPORTED_MIME = (() => {
+  for (const t of ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return '';
+})();
+
 export const useRecording = (
   meetingId: string,
   localStream: MediaStream | null,
@@ -11,9 +18,11 @@ export const useRecording = (
 ) => {
   const { isRecording, toggleRecording } = useMeetingStore();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
-  const isRecordingRef = useRef(false);
+  const chunksRef        = useRef<BlobPart[]>([]);
+  const isRecordingRef   = useRef(false);
+  const uploadingRef     = useRef(false);
 
+  // ── Build composite stream (screen video + mic audio) ────────────────────
   const getRecordingStream = useCallback((): MediaStream | null => {
     const { isScreenSharing } = useMeetingStore.getState();
     if (isScreenSharing && screenStreamRef?.current) {
@@ -26,105 +35,119 @@ export const useRecording = (
     return localStream;
   }, [screenStreamRef, localStream]);
 
+  // ── Upload accumulated chunks ─────────────────────────────────────────────
   const doUpload = useCallback(async () => {
-    if (chunksRef.current.length === 0) return;
-    const blob = new Blob(chunksRef.current, { type: 'video/webm' });
+    if (chunksRef.current.length === 0 || uploadingRef.current) return;
+    const chunks = [...chunksRef.current];
     chunksRef.current = [];
-    if (blob.size < 1000) return; // skip empty/corrupt blobs
+    const blob = new Blob(chunks, { type: SUPPORTED_MIME || 'video/webm' });
+    if (blob.size < 1024) return; // skip empty/corrupt blobs
 
-    const toastId = toast.loading('Uploading recording...');
+    uploadingRef.current = true;
+    const toastId = toast.loading('Uploading recording…');
     try {
       await recordingService.uploadRecording(meetingId, blob);
       toast.success('Recording saved!', { id: toastId });
     } catch (err: any) {
-      toast.error(`Upload failed: ${err?.response?.data?.message ?? err?.message ?? 'Unknown error'}`, { id: toastId });
+      const msg = err?.response?.data?.message ?? err?.message ?? 'Unknown error';
+      toast.error(`Upload failed: ${msg}`, { id: toastId });
+    } finally {
+      uploadingRef.current = false;
     }
   }, [meetingId]);
 
-  const startRecording = useCallback(async () => {
-    if (isRecordingRef.current) return;
-    const stream = getRecordingStream();
-    if (!stream || stream.getTracks().length === 0) return;
-
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : MediaRecorder.isTypeSupported('video/webm')
-      ? 'video/webm'
-      : '';
-
+  // ── Create and wire a new MediaRecorder ──────────────────────────────────
+  const createRecorder = useCallback((stream: MediaStream): MediaRecorder | null => {
     try {
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      mediaRecorderRef.current = recorder;
-      chunksRef.current = [];
-
+      const recorder = new MediaRecorder(stream, SUPPORTED_MIME ? { mimeType: SUPPORTED_MIME } : undefined);
       recorder.ondataavailable = (e) => {
         if (e.data?.size > 0) chunksRef.current.push(e.data);
       };
-
-      recorder.start(1000);
-      isRecordingRef.current = true;
-      toggleRecording(); // set isRecording = true — safe: guarded by isRecordingRef above
-
-      const socket = getSocket();
-      if (socket?.connected) socket.emit('recording:started', { roomId: meetingId });
+      recorder.onerror = (e: any) => {
+        console.error('[Recording] MediaRecorder error:', e?.error ?? e);
+        // Attempt recovery: stop cleanly so onstop fires and we upload what we have
+        if (recorder.state !== 'inactive') recorder.stop();
+      };
+      return recorder;
     } catch (err) {
-      console.error('[Recording] Failed to start:', err);
+      console.error('[Recording] Failed to create MediaRecorder:', err);
+      return null;
     }
-  }, [getRecordingStream, meetingId, toggleRecording]);
+  }, []);
 
+  // ── Start recording ───────────────────────────────────────────────────────
+  const startRecording = useCallback(async () => {
+    if (isRecordingRef.current) return;
+    const stream = getRecordingStream();
+    if (!stream || stream.getTracks().filter(t => t.readyState === 'live').length === 0) return;
+
+    const recorder = createRecorder(stream);
+    if (!recorder) return;
+
+    recorder.onstop = async () => {
+      isRecordingRef.current = false;
+      if (useMeetingStore.getState().isRecording) toggleRecording();
+      getSocket()?.emit('recording:stopped', { roomId: meetingId });
+      await doUpload();
+    };
+
+    mediaRecorderRef.current = recorder;
+    chunksRef.current = [];
+    recorder.start(1000);
+    isRecordingRef.current = true;
+    if (!useMeetingStore.getState().isRecording) toggleRecording();
+    getSocket()?.emit('recording:started', { roomId: meetingId });
+  }, [getRecordingStream, createRecorder, meetingId, toggleRecording, doUpload]);
+
+  // ── Stop recording ────────────────────────────────────────────────────────
   const stopRecording = useCallback(() => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === 'inactive') {
       if (isRecordingRef.current) {
         isRecordingRef.current = false;
-        toggleRecording(); // set isRecording = false
+        if (useMeetingStore.getState().isRecording) toggleRecording();
       }
       doUpload();
       return;
     }
-
-    recorder.onstop = async () => {
-      isRecordingRef.current = false;
-      toggleRecording(); // set isRecording = false — safe: called exactly once here
-      const socket = getSocket();
-      if (socket?.connected) socket.emit('recording:stopped', { roomId: meetingId });
-      await doUpload();
-    };
-
-    // Request final chunk before stopping
+    // onstop is already wired in startRecording / switchSource
     recorder.requestData();
     recorder.stop();
     mediaRecorderRef.current = null;
-  }, [meetingId, toggleRecording, doUpload]);
+  }, [toggleRecording, doUpload]);
 
-  // Switch recording source (screen share ↔ camera) without losing chunks
+  // ── Switch source seamlessly (screen ↔ camera) ────────────────────────────
+  // Keeps accumulated chunks — no gap in the recording.
   const switchSource = useCallback((newStream: MediaStream) => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === 'inactive') return;
+    const old = mediaRecorderRef.current;
+    if (!old || old.state === 'inactive') return;
 
-    recorder.onstop = null; // don't upload on this intermediate stop
-    recorder.requestData();
-    recorder.stop();
+    // Collect final chunk from old recorder without triggering upload
+    old.onstop = null;
+    old.requestData();
+    old.stop();
 
-    const mimeType = recorder.mimeType || 'video/webm';
-    try {
-      const newRecorder = new MediaRecorder(newStream, { mimeType });
-      mediaRecorderRef.current = newRecorder;
-      newRecorder.ondataavailable = (e) => {
-        if (e.data?.size > 0) chunksRef.current.push(e.data);
-      };
-      newRecorder.start(1000);
-    } catch (err) {
-      console.error('[Recording] Failed to switch source:', err);
-    }
-  }, []);
+    const recorder = createRecorder(newStream);
+    if (!recorder) return;
 
-  // Cleanup: stop recorder on unmount without uploading twice
+    recorder.onstop = async () => {
+      isRecordingRef.current = false;
+      if (useMeetingStore.getState().isRecording) toggleRecording();
+      getSocket()?.emit('recording:stopped', { roomId: meetingId });
+      await doUpload();
+    };
+
+    mediaRecorderRef.current = recorder;
+    recorder.start(1000);
+    // isRecordingRef stays true — no state flicker
+  }, [createRecorder, meetingId, toggleRecording, doUpload]);
+
+  // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state !== 'inactive') {
-        recorder.onstop = null;
+        recorder.onstop = null; // prevent double-upload
         recorder.stop();
       }
     };

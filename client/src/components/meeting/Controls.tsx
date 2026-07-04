@@ -1,6 +1,5 @@
 import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Circle, StopCircle, PhoneOff, Hand, Smile, XOctagon } from 'lucide-react';
 import { useMeetingStore } from '../../store/meeting/meeting.store';
-import { useRecording } from '../../hooks/useRecording';
 import { getSocket } from '../../utils/socket';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { clsx } from 'clsx';
@@ -49,11 +48,13 @@ interface ControlsProps {
   startScreenShare?: () => Promise<void>;
   stopScreenShare?: () => void;
   stopAllTracks?: () => void;
+  startRecording?: () => Promise<void>;
+  stopRecording?: () => void;
   leaveMeeting: (meetingId?: string) => Promise<void>;
   endMeeting: (meetingId: string) => Promise<void>;
 }
 
-const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks, leaveMeeting, endMeeting }: ControlsProps) => {
+const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks, startRecording, stopRecording, leaveMeeting, endMeeting }: ControlsProps) => {
   const { id: meetingId } = useParams();
   const user = useAppSelector((s) => s.auth.user);
   const {
@@ -62,7 +63,6 @@ const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenSh
     currentMeeting, setHandRaised,
   } = useMeetingStore();
   const isHost = currentMeeting?.host === user?.id || (currentMeeting?.host as any)?._id === user?.id;
-  const { startRecording, stopRecording } = useRecording(meetingId ?? '', localStream ?? null, screenStreamRef);
   const [handRaised, setHandRaisedLocal] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
 
@@ -76,8 +76,8 @@ const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenSh
 
   const handleRecordingToggle = async () => {
     try {
-      if (isRecording) stopRecording();
-      else await startRecording();
+      if (isRecording) stopRecording?.();
+      else await startRecording?.();
     } catch {
       toast.error('Failed to toggle recording');
     }

@@ -170,6 +170,9 @@ const MeetingRoom = () => {
   const { localStreamRef, localStream, remoteStreams, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks } = useWebRTC({ roomId: socketRoomId, userId: user?.id ?? '' });
   
   useTranscription(id ?? '');
+  // useMeeting registers socket event listeners — pass socketRoomId so it
+  // re-registers when the real roomId arrives from the server
+  const { leaveMeeting, endMeeting } = useMeeting(socketRoomId || id, () => stopRecording());
 
   // Auto-start recording when localStream is ready
   const { startRecording, stopRecording, switchSource } = useRecording(id ?? '', localStream, screenStreamRef);
@@ -182,16 +185,16 @@ const MeetingRoom = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localStream]);
 
-  // Switch recording source when screen sharing starts/stops
+  // Switch recording source seamlessly when screen sharing starts/stops
   const prevScreenSharing = useRef(false);
   const isScreenSharing = useMeetingStore((s) => s.isScreenSharing);
   useEffect(() => {
     if (!recordingStartedRef.current) return;
     if (isScreenSharing === prevScreenSharing.current) return;
     prevScreenSharing.current = isScreenSharing;
-    if (isScreenSharing) {
+    if (isScreenSharing && screenStreamRef?.current) {
       const tracks = [
-        ...(screenStreamRef?.current?.getVideoTracks() ?? []),
+        ...screenStreamRef.current.getVideoTracks(),
         ...(localStream?.getAudioTracks() ?? []),
       ];
       if (tracks.length) switchSource(new MediaStream(tracks));
@@ -301,7 +304,7 @@ const MeetingRoom = () => {
           <div className="flex-1 relative overflow-hidden">
             <VideoGrid localStream={localStream} remoteStreams={remoteStreams} />
           </div>
-          <Controls localStream={localStream} screenStreamRef={screenStreamRef} startScreenShare={startScreenShare} stopScreenShare={stopScreenShare} stopAllTracks={stopAllTracks} />
+          <Controls localStream={localStream} screenStreamRef={screenStreamRef} startScreenShare={startScreenShare} stopScreenShare={stopScreenShare} stopAllTracks={stopAllTracks} startRecording={startRecording} stopRecording={stopRecording} leaveMeeting={leaveMeeting} endMeeting={endMeeting} />
         </div>
 
         {/* Right panel — hidden on mobile (xs), slides from right on sm+ */}

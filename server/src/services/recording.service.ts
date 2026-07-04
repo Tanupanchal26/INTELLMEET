@@ -81,10 +81,11 @@ exports.deleteRecording = async (recordingId, tenantId, ownerId) => {
 
   if (recording.url && recording.url.includes('cloudinary.com')) {
     try {
-      const urlParts = recording.url.split('/');
-      const filename = urlParts[urlParts.length - 1];
-      const publicId = `intellmeet/recordings/${tenantId}/${filename.split('.')[0]}`;
-      await cloudinary.uploader.destroy(publicId, { resource_type: 'video' });
+      // Extract public_id from URL: everything after /upload/[optional-version/] up to the extension
+      const match = recording.url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
+      if (match?.[1]) {
+        await cloudinary.uploader.destroy(match[1], { resource_type: 'video' });
+      }
     } catch (err) {
       logger.error(`[RECORDING] Failed to delete from Cloudinary: ${err.message}`);
     }

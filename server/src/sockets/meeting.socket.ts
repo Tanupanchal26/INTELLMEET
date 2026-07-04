@@ -83,6 +83,9 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
       socket.to(`meeting:${roomId}`).emit('meeting:user-joined', {
         socketId: socket.id,
         user: { id: user.id, name: user.name, avatar: user.avatar },
+        isMuted:         socket.isMuted         ?? false,
+        isVideoOff:      socket.isVideoOff      ?? true,
+        isScreenSharing: socket.isScreenSharing ?? false,
       });
 
       const hostIdStr = existingMeeting?.host?.toString();

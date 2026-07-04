@@ -131,8 +131,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
   }, [socket, roomId, addParticipant, removeParticipant, setInCall, setParticipants, appendTranscript, updateParticipant, resetMeeting, navigate, qc, setHandRaised]);
 
   const leaveMeeting = async (_meetingId?: string) => {
-    // Only leave the socket room — do NOT call meetingService.end() which would
-    // mark the meeting as ended for everyone when a participant simply leaves.
+    onBeforeLeave?.();
     socket?.emit('meeting:leave', roomId);
     resetMeeting();
     qc.invalidateQueries({ queryKey: ['dashboard'] });
@@ -142,12 +141,9 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
   };
 
   const endMeeting = async (meetingId: string) => {
-    // Emit meeting:end (host-only termination) — NOT meeting:ended (AI pipeline).
-    // The server meeting:end handler updates DB status, closes the room, and
-    // broadcasts meeting:ended-by-host to all participants.
+    onBeforeLeave?.();
     const { currentMeeting } = useMeetingStore.getState();
     socket?.emit('meeting:end', { roomId: currentMeeting?.roomId ?? roomId });
-    // Also call REST so status is persisted even if socket ack is missed
     await meetingService.end(meetingId).catch(() => {});
     resetMeeting();
     toast('Meeting ended', { icon: '🔴' });

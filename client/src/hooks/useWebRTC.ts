@@ -74,7 +74,8 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   const broadcastMediaState = useCallback((videoOff: boolean, muted: boolean) => {
     const s = getSocket();
     if (s?.connected && roomId) {
-      s.emit('meeting:media-state', { roomId, isMuted: muted, isVideoOff: videoOff, isScreenSharing: false });
+      const { isScreenSharing } = useMeetingStore.getState();
+      s.emit('meeting:media-state', { roomId, isMuted: muted, isVideoOff: videoOff, isScreenSharing });
     }
   }, [roomId]);
 
@@ -447,7 +448,15 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     screenStreamRef.current = null;
     setScreenSharing(false);
     const s = getSocket();
-    if (s?.connected && roomId) s.emit('meeting:screen-share', { roomId, isSharing: false });
+    if (s?.connected && roomId) {
+      s.emit('meeting:screen-share', { roomId, isSharing: false });
+      s.emit('meeting:media-state', {
+        roomId,
+        isMuted: useMeetingStore.getState().isMuted,
+        isVideoOff: useMeetingStore.getState().isVideoOff,
+        isScreenSharing: false,
+      });
+    }
 
     // Restore camera track
     if (!isVideoOff) {
@@ -481,9 +490,15 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
 
   const startScreenShare = useCallback(async () => {
     try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30 }, displaySurface: 'monitor' },
+        audio: false,
+      });
       screenStreamRef.current = screenStream;
       const screenTrack = screenStream.getVideoTracks()[0];
+      if (!screenTrack) { screenStream.getTracks().forEach(t => t.stop()); return; }
+
+      // When user clicks browser's "Stop sharing" button
       screenTrack.onended = () => stopScreenShare();
 
       // Replace camera track with screen track in all peers
@@ -502,8 +517,20 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
       setScreenSharing(true);
       const s = getSocket();
-      if (s?.connected && roomId) s.emit('meeting:screen-share', { roomId, isSharing: true });
-    } catch {
+      if (s?.connected && roomId) {
+        s.emit('meeting:screen-share', { roomId, isSharing: true });
+        s.emit('meeting:media-state', {
+          roomId,
+          isMuted: useMeetingStore.getState().isMuted,
+          isVideoOff: useMeetingStore.getState().isVideoOff,
+          isScreenSharing: true,
+        });
+      }
+    } catch (err: any) {
+      // User cancelled the picker — not an error worth toasting
+      if (err?.name !== 'NotAllowedError') {
+        toast.error('Screen sharing failed. Please try again.');
+      }
       setScreenSharing(false);
     }
   }, [roomId, setScreenSharing, stopScreenShare, replaceVideoTrackInPeers]);
