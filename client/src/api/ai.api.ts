@@ -55,6 +55,25 @@ export interface GeneratedTask {
   estimatedHours: number | null;
 }
 
+export interface FollowUpSuggestion {
+  _id?: string;
+  text: string;
+  priority: 'high' | 'medium' | 'low';
+  owner: string | null;
+}
+
+export interface FullReport {
+  summary: string;
+  actionItems: ActionItem[];
+  decisions: Decision[];
+  keywords: Keywords;
+  followUpSuggestions: FollowUpSuggestion[];
+  minutes: string;
+  smartNotes: any;
+  processingStatus: 'idle' | 'processing' | 'completed' | 'failed';
+  participants: string[];
+}
+
 export const aiService = {
   getResult: (meetingId: string) =>
     api.get<AIResult>(`/ai/${meetingId}`),
@@ -106,4 +125,10 @@ export const aiService = {
 
   getMeetingHistory: (page = 1, limit = 20) =>
     api.get('/ai/history', { params: { page, limit } }),
+
+  getFullReport: (meetingId: string) =>
+    api.get<FullReport>(`/ai/${meetingId}/full-report`),
+
+  getFollowUpSuggestions: (meetingId: string) =>
+    api.get<{ suggestions: FollowUpSuggestion[] }>(`/ai/${meetingId}/follow-up-suggestions`),
 };

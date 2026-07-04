@@ -34,6 +34,40 @@ export const summarize = async (transcript: string, length: SummaryLength = 'med
   });
 };
 
+export const extractFollowUpSuggestions = async (transcript: string): Promise<{
+  text: string;
+  priority: 'high' | 'medium' | 'low';
+  owner: string | null;
+}[]> => {
+  const client = getClient();
+  return withRetry(async () => {
+    const res = await client.chat.completions.create({
+      model: AI_MODEL.GPT4O,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: `Extract follow-up suggestions from this meeting transcript.\nReturn JSON: { "suggestions": [{ "text": string, "priority": "high"|"medium"|"low", "owner": string|null }] }\nLimit to the 10 most important. Return empty array if none found.`,
+        },
+        { role: 'user', content: `Transcript:\n\n${transcript.slice(0, 20000)}` },
+      ],
+      max_tokens:  500,
+      temperature: 0.2,
+    });
+    const raw = res.choices[0].message.content!;
+    try {
+      const parsed = JSON.parse(raw);
+      return (parsed.suggestions || []).map((s: any) => ({
+        text:     String(s.text || '').slice(0, 300),
+        priority: ['high', 'medium', 'low'].includes(s.priority) ? s.priority : 'medium',
+        owner:    s.owner || null,
+      }));
+    } catch {
+      return [];
+    }
+  });
+};
+
 export const extractKeywords = async (transcript: string): Promise<{
   topics: string[];
   people: string[];

@@ -349,16 +349,24 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
         }
       }
 
-      // Fire-and-forget AI pipeline — never blocks the response
-      Promise.all([
-        transcriptionService.consolidateTranscript(meetingDbId),
-        aiService.summarize(meetingDbId),
-        aiService.getActionItems(meetingDbId),
-      ]).then(([, summary, actionItems]: [unknown, unknown, unknown]) => {
-        io.to(`meeting:${meetingDbId}`).emit('ai:summary-ready', { summary, actionItems });
-      }).catch((aiErr: Error) => {
-        logger.error(`[SOCKET] meeting:end AI pipeline error: ${aiErr.message}`);
-      });
+      // Fire-and-forget: queue full AI pipeline post-meeting
+      const { enqueueAIJob } = require('../queues/ai.queue');
+      const tenantId = meeting.tenantId?.toString();
+      enqueueAIJob('fullPipeline', { meetingId: meetingDbId, tenantId })
+        .then((job: any) => {
+          if (!job) {
+            // Sync fallback if no queue
+            return Promise.all([
+              transcriptionService.consolidateTranscript(meetingDbId),
+              aiService.runFullPipeline(meetingDbId),
+            ]).then(([, result]: [unknown, any]) => {
+              io.to(`tenant:${tenantId}`).emit('ai:full-report-ready', { meetingId: meetingDbId, ...result });
+            });
+          }
+        })
+        .catch((aiErr: Error) => {
+          logger.error(`[SOCKET] meeting:end AI pipeline error: ${aiErr.message}`);
+        });
 
     } catch (err) {
       logger.error(`[SOCKET] meeting:end error: ${(err as Error).message}`);

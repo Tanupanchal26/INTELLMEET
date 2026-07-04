@@ -1,7 +1,7 @@
 // @ts-nocheck
 const AIResult  = require('../models/AIResult');
 const Meeting   = require('../models/Meeting');
-const { summarize, extractKeywords }  = require('../ai/summarizer');
+const { summarize, extractKeywords, extractFollowUpSuggestions } = require('../ai/summarizer');
 const { extractActionItems, extractDecisions } = require('../ai/actionItems');
 const { generateMinutes, generateSmartNotes }  = require('../ai/minutesGenerator');
 const { chat, generateTasks }  = require('../ai/assistant');
@@ -231,6 +231,94 @@ exports.searchMeetings = async (tenantId: string, query: string) => {
 
   const results = await semanticSearch(query, documents);
   return results.map((r: any) => ({ id: r.id, title: r.title, date: r.date, score: r.score }));
+};
+
+// ── Follow-Up Suggestions ────────────────────────────────────────────────────
+exports.getFollowUpSuggestions = async (meetingId: string) => {
+  const cacheKey = `ai:followup:${meetingId}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const result = await AIResult.findOne({ meeting: meetingId });
+  if (result?.followUpSuggestions?.length) {
+    await cacheSet(cacheKey, result.followUpSuggestions);
+    return result.followUpSuggestions;
+  }
+
+  const transcript = await resolveTranscript(meetingId);
+  if (!transcript) return [];
+
+  const followUpSuggestions = await extractFollowUpSuggestions(transcript);
+  await AIResult.findOneAndUpdate({ meeting: meetingId }, { followUpSuggestions }, { upsert: true });
+  await cacheSet(cacheKey, followUpSuggestions);
+  return followUpSuggestions;
+};
+
+// ── Full Pipeline (atomic post-meeting) ───────────────────────────────────────
+exports.runFullPipeline = async (meetingId: string) => {
+  const [meeting, transcript] = await Promise.all([
+    Meeting.findById(meetingId).populate('participants', 'name _id'),
+    resolveTranscript(meetingId),
+  ]);
+
+  if (!meeting) throw new Error('Meeting not found');
+  if (!transcript) throw new Error('No transcript available');
+
+  await AIResult.findOneAndUpdate(
+    { meeting: meetingId },
+    { processingStatus: 'processing', participants: (meeting.participants || []).map((p: any) => p._id) },
+    { upsert: true }
+  );
+
+  try {
+    const [summary, actionItems, decisions, keywords, followUpSuggestions, minutes, smartNotes] = await Promise.all([
+      summarize(transcript, 'medium'),
+      extractActionItems(transcript),
+      extractDecisions(transcript),
+      extractKeywords(transcript),
+      extractFollowUpSuggestions(transcript),
+      generateMinutes({
+        transcript,
+        title:        meeting.title,
+        participants: (meeting.participants || []).map((p: any) => p.name),
+        date:         (meeting.startedAt || meeting.createdAt).toLocaleDateString(),
+      }),
+      generateSmartNotes({
+        transcript,
+        title: meeting.title,
+        agenda: (meeting.agenda || []).map((a: any) => a.title).filter(Boolean),
+      }),
+    ]);
+
+    await AIResult.findOneAndUpdate(
+      { meeting: meetingId },
+      {
+        summary, summaryLength: 'medium', actionItems, decisions,
+        keywords, followUpSuggestions, minutes, smartNotes,
+        processingStatus: 'completed',
+        $inc: { version: 1 },
+      },
+      { upsert: true }
+    );
+    await Meeting.findByIdAndUpdate(meetingId, { summary });
+
+    // Bust all caches
+    await cacheDel(
+      `ai:summary:${meetingId}:medium`,
+      `ai:keywords:${meetingId}`,
+      `ai:smartnotes:${meetingId}`,
+      `ai:minutes:${meetingId}`,
+      `ai:followup:${meetingId}`,
+    );
+
+    return { summary, actionItems, decisions, keywords, followUpSuggestions, minutes, smartNotes };
+  } catch (err: any) {
+    await AIResult.findOneAndUpdate(
+      { meeting: meetingId },
+      { processingStatus: 'failed', processingError: err.message }
+    );
+    throw err;
+  }
 };
 
 // ── History ───────────────────────────────────────────────────────────────────

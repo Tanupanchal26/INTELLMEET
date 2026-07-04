@@ -48,7 +48,7 @@ export const initAIWorker = async (): Promise<void> => {
 };
 
 export const enqueueAIJob = async (
-  name: 'summarize' | 'minutes' | 'actionItems' | 'tasks',
+  name: 'summarize' | 'minutes' | 'actionItems' | 'tasks' | 'fullPipeline',
   data: Record<string, any>,
 ): Promise<{ id: string } | null> => {
   if (!_bullmqAvailable || !_queue) return null;

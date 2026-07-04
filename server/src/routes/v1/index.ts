@@ -136,6 +136,8 @@ router.post('/teams/:teamId/chat/:messageId/react',    teamChatCtrl.toggleReacti
 router.use('/ai', protect, scopeTenant('tenantId'), aiLimiter);
 router.get('/ai/search',                                    aiCtrl.searchMeetings);
 router.get('/ai/history',                                   aiCtrl.getMeetingHistory);
+router.get('/ai/:meetingId/full-report',                    aiCtrl.getFullReport);
+router.get('/ai/:meetingId/follow-up-suggestions',          aiCtrl.getFollowUpSuggestions);
 router.get('/ai/:meetingId',                                aiCtrl.getAIResult);
 // Summary
 router.post('/ai/:meetingId/summary',                       aiCtrl.generateSummary);

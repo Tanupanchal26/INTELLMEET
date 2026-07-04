@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import {
   Brain, Sparkles, FileText, Download, Search,
-  Loader2, Mic, Bot, Video, CheckCircle2, Send,
+  Loader2, Mic, Bot, Video, CheckCircle2, Send, ListChecks,
 } from 'lucide-react';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
@@ -21,6 +21,7 @@ const CAPABILITIES = [
   { icon: FileText,     label: 'Minutes',        color: '#FBBF24', bg: 'rgba(245,158,11,0.1)' },
   { icon: Bot,          label: 'AI Assistant',   color: '#F87171', bg: 'rgba(239,68,68,0.1)' },
   { icon: Search,       label: 'Semantic Search',color: '#22D3EE', bg: 'rgba(6,182,212,0.1)' },
+  { icon: ListChecks,   label: 'Follow-ups',     color: '#F472B6', bg: 'rgba(244,114,182,0.1)' },
 ];
 
 const PROMPT_SUGGESTIONS = [
@@ -33,12 +34,14 @@ const PROMPT_SUGGESTIONS = [
 const AISummary = () => {
   const [selectedId, setSelectedId]   = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab]     = useState<'summary' | 'actions' | 'minutes'>('summary');
+  const [activeTab, setActiveTab]     = useState<'summary' | 'actions' | 'minutes' | 'followup'>('summary');
   const [chatMsg, setChatMsg]         = useState('');
   const [chatHistory, setChatHistory] = useState<{ role: string; content: string }[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching]     = useState(false);
+  const [followUpSuggestions, setFollowUpSuggestions] = useState<any[]>([]);
+  const [followUpLoading, setFollowUpLoading] = useState(false);
 
   const store = useAIStore();
   const authUser = useAppSelector((s) => s.auth.user);
@@ -62,6 +65,22 @@ const AISummary = () => {
     placeholderData: (prev: any) => prev,
     retry: 2,
   });
+
+  // Auto-load follow-up suggestions when a completed meeting is selected
+  useEffect(() => {
+    if (!selectedId || !aiResult) return;
+    if (aiResult.processingStatus === 'completed' && aiResult.followUpSuggestions?.length) {
+      setFollowUpSuggestions(aiResult.followUpSuggestions);
+      return;
+    }
+    if (aiResult.processingStatus === 'completed') {
+      setFollowUpLoading(true);
+      aiService.getFollowUpSuggestions(selectedId)
+        .then((res: any) => setFollowUpSuggestions(res?.data?.suggestions ?? res?.suggestions ?? []))
+        .catch(() => {})
+        .finally(() => setFollowUpLoading(false));
+    }
+  }, [selectedId, aiResult?.processingStatus]);
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -222,7 +241,7 @@ const AISummary = () => {
             meetings.map((m: any) => (
               <button
                 key={m._id}
-                onClick={() => { setSelectedId(m._id); setChatHistory([]); }}
+                onClick={() => { setSelectedId(m._id); setChatHistory([]); setFollowUpSuggestions([]); }}
                 className={clsx(
                   'flex items-center gap-2.5 p-2.5 rounded-xl text-left transition-all w-full border cursor-pointer',
                   selectedId === m._id
@@ -308,7 +327,7 @@ const AISummary = () => {
               <div
                 className="flex gap-1 p-1 rounded-xl w-fit border border-[var(--color-border)] bg-[var(--color-bg-tertiary)]"
               >
-                {(['summary', 'actions', 'minutes'] as const).map((tab) => (
+                {(['summary', 'actions', 'minutes', 'followup'] as const).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -319,10 +338,15 @@ const AISummary = () => {
                         : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'
                     )}
                   >
-                    {tab}
+                    {tab === 'followup' ? 'Follow-ups' : tab}
                     {tab === 'actions' && displayActions.length > 0 && (
                       <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[9px] border border-indigo-200 font-bold">
                         {displayActions.length}
+                      </span>
+                    )}
+                    {tab === 'followup' && followUpSuggestions.length > 0 && (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-pink-100 text-pink-700 text-[9px] border border-pink-200 font-bold">
+                        {followUpSuggestions.length}
                       </span>
                     )}
                   </button>
@@ -385,6 +409,42 @@ const AISummary = () => {
                     <div className="flex flex-col items-center gap-3 py-12">
                       <FileText size={22} className="text-[var(--color-text-dim)]" />
                       <p className="text-[13px] text-[var(--color-text-secondary)] font-semibold">Click "Minutes" to generate formal meeting minutes</p>
+                    </div>
+                  )
+                )}
+
+                {activeTab === 'followup' && (
+                  followUpLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <Loader2 size={20} className="animate-spin text-pink-500" />
+                    </div>
+                  ) : followUpSuggestions.length > 0 ? (
+                    <div className="flex flex-col gap-2.5">
+                      {followUpSuggestions.map((s: any, i: number) => (
+                        <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-white/40 border border-[var(--color-border)] hover:border-pink-400/50 hover:bg-white/60 transition-all">
+                          <div className={clsx(
+                            'w-2 h-2 rounded-full shrink-0 mt-1.5 shadow-sm',
+                            s.priority === 'high' ? 'bg-red-500' : s.priority === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'
+                          )} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] text-[var(--color-text)] font-semibold leading-normal">{s.text}</p>
+                            {s.owner && <p className="text-[11px] text-[var(--color-text-secondary)] mt-1 font-semibold">👤 {s.owner}</p>}
+                          </div>
+                          <span className={clsx(
+                            'text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 border uppercase tracking-wider',
+                            s.priority === 'high' ? 'bg-red-50 text-red-700 border-red-200' :
+                            s.priority === 'medium' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                            'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          )}>
+                            {s.priority}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-3 py-12">
+                      <ListChecks size={22} className="text-[var(--color-text-dim)]" />
+                      <p className="text-[13px] text-[var(--color-text-secondary)] font-semibold">No follow-up suggestions yet — generate a summary first</p>
                     </div>
                   )
                 )}

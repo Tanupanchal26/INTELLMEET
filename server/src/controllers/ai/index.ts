@@ -11,6 +11,21 @@ const { enqueueAIJob }       = require('../../queues/ai.queue');
 const MAX_TRANSCRIPT = 50_000;
 const MAX_PROMPT     = 2_000;
 
+// ── GET /ai/:meetingId/full-report ───────────────────────────────────────────
+exports.getFullReport = asyncHandler(async (req, res) => {
+  const result = await AIResult.findOne({ meeting: req.params.meetingId })
+    .select('summary actionItems decisions keywords followUpSuggestions minutes smartNotes processingStatus participants')
+    .lean();
+  if (!result) throw ApiError.notFound('AI result not found');
+  return ApiResponse.ok(res, result, 'Full report retrieved');
+});
+
+// ── GET /ai/:meetingId/follow-up-suggestions ──────────────────────────────────
+exports.getFollowUpSuggestions = asyncHandler(async (req, res) => {
+  const suggestions = await aiService.getFollowUpSuggestions(req.params.meetingId);
+  return ApiResponse.ok(res, { suggestions }, 'Follow-up suggestions retrieved');
+});
+
 // ── GET /ai/:meetingId ────────────────────────────────────────────────────────
 exports.getAIResult = asyncHandler(async (req, res) => {
   const result = await AIResult.findOne({ meeting: req.params.meetingId });
