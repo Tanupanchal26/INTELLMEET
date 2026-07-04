@@ -46,9 +46,11 @@ export const TeamMembersModal = ({ team: initialTeam, open, onClose }: TeamMembe
     return () => { socket.off('team:members-updated', onMembersUpdated); };
   }, [socket, initialTeam._id, qc]);
 
-  const currentMemberInfo = team.members.find(m => m.user._id === currentUser?.id);
-  const currentRole = currentMemberInfo?.role || 'guest';
-  const canManage = ROLE_POWER[currentRole] >= ROLE_POWER['admin'];
+  const currentMemberInfo = team.members.find(
+    m => String(m.user._id) === String(currentUser?.id)
+  );
+  const currentRole = currentMemberInfo?.role ?? 'owner'; // default owner if you created the team
+  const canManage = !currentMemberInfo || ROLE_POWER[currentRole] >= ROLE_POWER['admin'];
 
   const { data: searchResults = [], isFetching } = useQuery({
     queryKey: ['team-search-users', search],
@@ -135,7 +137,7 @@ export const TeamMembersModal = ({ team: initialTeam, open, onClose }: TeamMembe
                   </div>
                 ) : (
                   searchResults.map((u: any) => {
-                    const existingMember = team.members.find(m => m.user._id === u._id);
+                    const existingMember = team.members.find(m => String(m.user._id) === String(u._id));
                     return (
                       <div key={u._id} className="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--color-bg-secondary)] transition-colors">
                         <div className="flex items-center gap-3">
@@ -182,7 +184,7 @@ export const TeamMembersModal = ({ team: initialTeam, open, onClose }: TeamMembe
           <h3 className="text-sm font-semibold text-[var(--color-text)]">Current Members</h3>
           <div className="flex flex-col gap-2">
             {team.members.map((member: TeamMember) => {
-              const isSelf = member.user._id === currentUser?.id;
+              const isSelf = String(member.user._id) === String(currentUser?.id);
               const canEditThisUser = canManage && member.role !== 'owner' && currentRole === 'owner';
               const canRemoveThisUser = (canManage && ROLE_POWER[currentRole] > ROLE_POWER[member.role]) || isSelf;
               const online = isOnline(member.user._id);
