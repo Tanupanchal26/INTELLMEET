@@ -25,8 +25,8 @@ exports.googleCallback = async (req, res) => {
 
     res.cookie('__oauth_token', accessToken, {
       httpOnly: false,
-      secure:   config.isProd,
-      sameSite: 'lax',
+      secure:   true,          // must be true when sameSite is 'none'
+      sameSite: 'none',        // required for cross-origin Netlify → Render redirect
       maxAge:   60 * 1000,
       path:     '/',
     });

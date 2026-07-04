@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '../hooks/useAppDispatch';
 import { setCredentials } from '../store/auth/auth.slice';
@@ -18,20 +18,26 @@ const clearCookie = (name: string): void => {
 };
 
 const GoogleAuthSuccess = () => {
-  const dispatch = useAppDispatch();
-  const navigate = useNavigate();
+  const dispatch  = useAppDispatch();
+  const navigate  = useNavigate();
+  // Guard against React StrictMode double-invoke
+  const handled   = useRef(false);
 
   useEffect(() => {
+    if (handled.current) return;
+    handled.current = true;
+
     const accessToken = readCookie(OAUTH_COOKIE_NAME);
 
     if (accessToken) {
       clearCookie(OAUTH_COOKIE_NAME);
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
 
-      // Fetch user data from API — never read PII from URL params
-      // Interceptor unwraps res.data → API envelope { data: User, ... }
       authService.me()
-        .then(({ data: user }) => {
+        .then((res) => {
+          // res is ApiEnvelope<User>: { success, data: User, message }
+          const user = res.data;
+          if (!user?.id && !(user as any)?._id) throw new Error('Invalid user data');
           localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
           dispatch(setCredentials({ user, accessToken }));
           toast.success(`Welcome, ${user.name || 'back'}! 🎉`);
@@ -39,22 +45,22 @@ const GoogleAuthSuccess = () => {
         })
         .catch(() => {
           localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-          toast.error('Google sign-in failed.');
+          toast.error('Google sign-in failed. Please try again.');
           navigate(ROUTES.LOGIN, { replace: true });
         });
       return;
     }
 
-    // Already logged in (e.g. StrictMode second mount)
+    // No cookie — check if already authenticated (e.g. navigated here directly)
     const existingToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
     if (existingToken) {
       navigate(ROUTES.DASHBOARD, { replace: true });
       return;
     }
 
-    toast.error('Google sign-in failed.');
+    toast.error('Google sign-in failed. Please try again.');
     navigate(ROUTES.LOGIN, { replace: true });
-  }, []);
+  }, [dispatch, navigate]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#07070C] gap-4">

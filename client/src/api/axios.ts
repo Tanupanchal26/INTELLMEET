@@ -1,5 +1,12 @@
-import axios, { type AxiosRequestConfig, type InternalAxiosRequestConfig } from 'axios';
+import axios, {
+  type AxiosRequestConfig,
+  type InternalAxiosRequestConfig,
+} from 'axios';
 import { API_BASE_URL, STORAGE_KEYS } from '../constants';
+
+interface RetryableConfig extends AxiosRequestConfig {
+  _retry?: boolean;
+}
 
 const axiosClient = axios.create({
   baseURL:         API_BASE_URL,
@@ -27,14 +34,14 @@ axiosClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 axiosClient.interceptors.response.use(
   (res) => res.data,   // unwrap — controllers return ApiResponse envelope
   async (error) => {
-    const original: AxiosRequestConfig & { _retry?: boolean } = error.config || {};
+    const original = (error.config ?? {}) as RetryableConfig;
 
     if (error.response?.status === 401 && !original._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then(token => {
-          original.headers = { ...original.headers, Authorization: `Bearer ${token}` };
+          original.headers = { ...(original.headers ?? {}), Authorization: `Bearer ${token}` };
           return axiosClient(original);
         });
       }
@@ -43,21 +50,24 @@ axiosClient.interceptors.response.use(
       isRefreshing    = true;
 
       try {
-        // Response interceptor unwraps res.data, so refreshed token is at .data.accessToken
+        // Use raw axios (not axiosClient) to avoid the response interceptor re-running
         const refreshed = await axios.post(
           `${API_BASE_URL}/auth/refresh-token`,
           {},
-          { withCredentials: true }   // sends httpOnly refresh cookie automatically
+          { withCredentials: true }
         );
 
-        // axios (not axiosClient) returns raw response — unwrap manually
-        const newToken: string = refreshed.data?.data?.accessToken ?? refreshed.data?.accessToken;
+        // Raw axios response: refreshed.data is the ApiResponse envelope
+        const newToken: string =
+          refreshed.data?.data?.accessToken ??
+          refreshed.data?.accessToken;
+
         if (!newToken) throw new Error('No token in refresh response');
 
         localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newToken);
         window.dispatchEvent(new CustomEvent('auth:tokenRefreshed', { detail: newToken }));
         processQueue(null, newToken);
-        original.headers = { ...original.headers, Authorization: `Bearer ${newToken}` };
+        original.headers = { ...(original.headers ?? {}), Authorization: `Bearer ${newToken}` };
         return axiosClient(original);
       } catch (refreshErr) {
         processQueue(refreshErr, null);

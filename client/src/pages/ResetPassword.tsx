@@ -1,18 +1,28 @@
-import { useState, type FormEvent } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect, type FormEvent } from 'react';
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, Video, Lock, CheckCircle } from 'lucide-react';
 import { ROUTES } from '../constants';
 import axiosClient from '../api/axios';
 import Logo from '../components/common/Logo';
 
 const ResetPassword = () => {
-  const { token } = useParams<{ token: string }>();
+  const { token: paramToken } = useParams<{ token: string }>();
+  const [searchParams] = useSearchParams();
+  // Support both /reset-password/:token and /reset-password?token=...
+  const token = paramToken || searchParams.get('token') || '';
   const navigate = useNavigate();
   const [form, setForm] = useState({ password: '', confirm: '' });
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState(token ? '' : 'No reset token provided. Please check your email reset link.');
+
+  // Navigate to login after success — cleaned up if component unmounts
+  useEffect(() => {
+    if (!done) return;
+    const id = setTimeout(() => navigate(ROUTES.LOGIN, { replace: true }), 3000);
+    return () => clearTimeout(id);
+  }, [done, navigate]);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -26,9 +36,11 @@ const ResetPassword = () => {
     if (form.password !== form.confirm) { setError('Passwords do not match'); return; }
     setLoading(true);
     try {
-      await axiosClient.post('/auth/reset-password', { token, password: form.password });
+      await axiosClient.post(`/auth/reset-password/${token}`, {
+        password: form.password,
+        confirmPassword: form.confirm,
+      });
       setDone(true);
-      setTimeout(() => navigate(ROUTES.LOGIN), 3000);
     } catch (err: any) {
       setError(err.message || 'Failed to reset password');
     } finally {

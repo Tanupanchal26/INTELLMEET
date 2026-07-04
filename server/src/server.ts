@@ -14,8 +14,17 @@ const io = new Server(server, {
     origin:      config.isDev ? true : config.cors.allowedOrigins,
     credentials: true,
   },
-  pingTimeout:  60000,
-  pingInterval: 25000,
+  // Prefer WebSocket — skip polling upgrade round-trip for lower latency
+  transports: ['websocket', 'polling'],
+  // Signaling payloads are small; 1 MB is generous but safe
+  maxHttpBufferSize: 1e6,
+  pingTimeout:  60_000,
+  pingInterval: 25_000,
+  // Allow client to recover missed events after a brief disconnect (e.g. mobile network switch)
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 30_000,
+    skipMiddlewares: false,
+  },
 });
 
 const start = async () => {

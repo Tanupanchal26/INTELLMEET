@@ -12,23 +12,27 @@ export const useAuth = () => {
   const navigate = useNavigate();
 
   const login = async (email: string, password: string, redirectTo: string = ROUTES.DASHBOARD) => {
-    const res = (await authService.login({ email, password })) as any;
-    const userData    = res.data?.user    || res.user;
-    const accessToken = res.data?.accessToken || res.accessToken || res.token;
-    if (!userData) throw new Error('User data not received');
+    const res = await authService.login({ email, password });
+    // res is ApiEnvelope<{ user: User; accessToken: string }>
+    const userData    = res.data?.user;
+    const accessToken = res.data?.accessToken;
+    if (!userData)    throw new Error('User data not received from server');
+    if (!accessToken) throw new Error('Access token not received from server');
     dispatch(setCredentials({ user: userData, accessToken }));
     toast.success(`Welcome back, ${userData.name}!`);
-    navigate(redirectTo);
+    navigate(redirectTo, { replace: true });
   };
 
   const register = async (name: string, email: string, password: string) => {
-    const res = (await authService.register({ name, email, password })) as any;
-    const userData = res.data?.user || res.user;
-    const accessToken = res.data?.accessToken || res.accessToken || res.token;
-    if (!userData) throw new Error('User data not received');
+    const res = await authService.register({ name, email, password });
+    // res is ApiEnvelope<{ user: User; accessToken: string }>
+    const userData    = res.data?.user;
+    const accessToken = res.data?.accessToken;
+    if (!userData)    throw new Error('User data not received from server');
+    if (!accessToken) throw new Error('Access token not received from server');
     dispatch(setCredentials({ user: userData, accessToken }));
     toast.success('Account created!');
-    navigate(ROUTES.DASHBOARD);
+    navigate(ROUTES.DASHBOARD, { replace: true });
   };
 
   const logout = async () => {
@@ -39,7 +43,7 @@ export const useAuth = () => {
     } finally {
       disconnectSocket();
       dispatch(clearAuth());
-      navigate(ROUTES.LOGIN);
+      navigate(ROUTES.LOGIN, { replace: true });
       toast.success('Signed out');
     }
   };

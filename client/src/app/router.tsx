@@ -56,7 +56,7 @@ const AppRoutes = () => {
         }
       />
 
-      {/* Auth pages */}
+      {/* Auth pages — only for unauthenticated users */}
       <Route element={<PublicRoute />}>
         <Route
           path={ROUTES.LOGIN}
@@ -75,10 +75,12 @@ const AppRoutes = () => {
           }
         />
         <Route path={ROUTES.FORGOT_PASSWORD} element={<Suspense fallback={<PageFallback />}><ForgotPassword /></Suspense>} />
-        <Route path={ROUTES.RESET_PASSWORD}  element={<Suspense fallback={<PageFallback />}><ResetPassword /></Suspense>} />
-        <Route path="/reset-password"        element={<Suspense fallback={<PageFallback />}><ResetPassword /></Suspense>} />
-        <Route path={ROUTES.VERIFY_EMAIL}    element={<Suspense fallback={<PageFallback />}><VerifyEmail /></Suspense>} />
       </Route>
+
+      {/* Token-based pages — accessible to ALL users (email links must work regardless of auth state) */}
+      <Route path={ROUTES.RESET_PASSWORD}  element={<Suspense fallback={<PageFallback />}><ResetPassword /></Suspense>} />
+      <Route path="/reset-password"        element={<Suspense fallback={<PageFallback />}><ResetPassword /></Suspense>} />
+      <Route path={ROUTES.VERIFY_EMAIL}    element={<Suspense fallback={<PageFallback />}><VerifyEmail /></Suspense>} />
 
       {/* Protected app shell */}
       <Route element={<ProtectedRoute />}>

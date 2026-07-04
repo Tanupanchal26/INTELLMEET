@@ -3,7 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { lazy, Suspense, useEffect } from 'react';
 import { useAppDispatch, useAppSelector } from './hooks/useAppDispatch';
-import { clearAuth, refreshAccessToken } from './store/auth/auth.slice';
+import { clearAuth, refreshAccessToken, setCredentials, setInitialized } from './store/auth/auth.slice';
+import { authService } from './api/auth.api';
+import { STORAGE_KEYS } from './constants';
 import AppRoutes from './app/router';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { initSentry } from './utils/sentry';
@@ -22,6 +24,32 @@ const IS_DEV = import.meta.env.DEV;
 
 const AuthSync = () => {
   const dispatch = useAppDispatch();
+  const isInitializing = useAppSelector((s) => s.auth.isInitializing);
+
+  // Validate stored token on app boot — catches expired tokens before any route renders
+  useEffect(() => {
+    if (!isInitializing) return;
+    authService.me()
+      .then((res) => {
+        // res is ApiEnvelope<User>: { success, data: User, message }
+        const user = res.data;
+        if (user?.id || (user as any)?._id) {
+          // Re-read token from storage in case the refresh interceptor already
+          // swapped it out while the me() request was in-flight
+          const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) ?? '';
+          dispatch(setCredentials({ user, accessToken: token }));
+        } else {
+          dispatch(clearAuth());
+        }
+      })
+      .catch(() => {
+        // Token invalid/expired — axios interceptor will attempt refresh;
+        // if that also fails it fires auth:logout which clears state.
+        // We only need to mark initialization done if clearAuth wasn't dispatched.
+        dispatch(setInitialized());
+      });
+  }, [dispatch, isInitializing]);
+
   useEffect(() => {
     const onRefresh = (e: Event) => dispatch(refreshAccessToken((e as CustomEvent<string>).detail));
     const onLogout  = () => dispatch(clearAuth());
