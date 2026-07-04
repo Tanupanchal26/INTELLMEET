@@ -125,9 +125,9 @@ exports.upsertMeetingNote = asyncHandler(async (req: Request, res: Response) => 
 
 // ── Join by meetingId or joinCode ─────────────────────────────────────────────
 exports.joinMeeting = asyncHandler(async (req: Request, res: Response) => {
-  const { code, roomId } = req.body as { code?: string; roomId?: string };
+  const { code, roomId, meetingId } = req.body as { code?: string; roomId?: string; meetingId?: string };
   const meeting = await meetingService.joinByRoomId(
-    code ?? roomId,
+    code ?? meetingId ?? roomId,
     req.tenantId,
     req.user?._id
   );

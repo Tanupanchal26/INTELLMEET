@@ -103,20 +103,25 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
       const room = io.sockets.adapter.rooms.get(`meeting:${roomId}`);
       io.to(`meeting:${roomId}`).emit('meeting:participant-count', room?.size ?? 0);
       // Broadcast updated participants list so all clients stay in sync
-      const participants: object[] = [];
-      if (room) {
-        for (const sid of room) {
-          const s = io.sockets.sockets.get(sid) as MeetingSocket | undefined;
-          if (s?.user) {
-            participants.push({
-              id: s.user.id, name: s.user.name, avatar: s.user.avatar,
-              socketId: sid, isMuted: s.isMuted ?? false,
-              isVideoOff: s.isVideoOff ?? true, isScreenSharing: s.isScreenSharing ?? false,
-            });
+      Meeting.findOne({ roomId }).then((mtg: any) => {
+        const hostIdStr = mtg?.host?.toString();
+        const participants: object[] = [];
+        if (room) {
+          for (const sid of room) {
+            const s = io.sockets.sockets.get(sid) as MeetingSocket | undefined;
+            if (s?.user) {
+              participants.push({
+                id: s.user.id, name: s.user.name, avatar: s.user.avatar,
+                socketId: sid,
+                isHost: hostIdStr ? s.user.id === hostIdStr : false,
+                isMuted: s.isMuted ?? false,
+                isVideoOff: s.isVideoOff ?? true, isScreenSharing: s.isScreenSharing ?? false,
+              });
+            }
           }
         }
-      }
-      io.to(`meeting:${roomId}`).emit('meeting:participants-list', participants);
+        io.to(`meeting:${roomId}`).emit('meeting:participants-list', participants);
+      }).catch(() => {});
     } catch (err) {
       logger.error(`[SOCKET] meeting:leave error: ${(err as Error).message}`);
     }
