@@ -5,7 +5,6 @@ import Sidebar from './Sidebar';
 import TopBar from './Navbar';
 import { useAppSelector, useAppDispatch } from '../../hooks/useAppDispatch';
 import { setMobileSidebar } from '../../store/ui/ui.slice';
-import { motion as m } from '../../design-system/motion';
 import { ROUTES } from '../../constants';
 
 const PAGE_TITLES: Record<string, string> = {
@@ -75,18 +74,7 @@ const AppLayout = () => {
           tabIndex={-1}
           aria-label={title || 'Page content'}
         >
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={pathname}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={m.transition.page}
-              className="h-full"
-            >
-              <Outlet />
-            </motion.div>
-          </AnimatePresence>
+          <Outlet />
         </main>
       </div>
     </div>

@@ -360,7 +360,7 @@ const MeetingRoom = () => {
                 ))}
               </div>
 
-              {/* Panel content */}
+              {/* Panel content — all panels stay mounted to preserve state across tab switches */}
               <div className="flex-1 overflow-hidden" role="tabpanel">
                 <AnimatePresence mode="wait">
                   <motion.div
@@ -375,9 +375,18 @@ const MeetingRoom = () => {
                     <div className={clsx('h-full', activePanel !== 'chat' && 'hidden')}>
                       <ChatBox meetingId={id ?? ''} />
                     </div>
-                    {activePanel === 'participants' && <ParticipantList />}
-                    {activePanel === 'ai'           && <AIPanel meetingId={id ?? ''} />}
-                    {activePanel === 'notes'        && <NotesPanel meetingId={id ?? ''} />}
+                    {/* ParticipantList: always mounted, hidden when not active */}
+                    <div className={clsx('h-full', activePanel !== 'participants' && 'hidden')}>
+                      <ParticipantList />
+                    </div>
+                    {/* AIPanel: always mounted so summary/transcript/actions state is never lost */}
+                    <div className={clsx('h-full', activePanel !== 'ai' && 'hidden')}>
+                      <AIPanel meetingId={id ?? ''} />
+                    </div>
+                    {/* NotesPanel: always mounted so typed notes are never lost */}
+                    <div className={clsx('h-full', activePanel !== 'notes' && 'hidden')}>
+                      <NotesPanel meetingId={id ?? ''} />
+                    </div>
                   </motion.div>
                 </AnimatePresence>
               </div>

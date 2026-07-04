@@ -22,7 +22,24 @@ const DevNavigator = import.meta.env.DEV
 // Initialize Sentry as early as possible
 initSentry();
 
-const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 5 * 60 * 1000 } } });
+// Session-scoped caching — Google Meet / Zoom style SPA behaviour
+// gcTime 30 min  : cached data survives navigation for the whole session
+// staleTime 5 min: no refetch within 5 min of last successful fetch
+// refetchOnWindowFocus false : switching browser tabs never triggers a refetch
+// refetchOnMount false       : navigating back to a page never re-fetches fresh data
+// refetchOnReconnect always  : only refetch when the network actually drops & reconnects
+const qc = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 5 * 60 * 1_000,
+      gcTime: 30 * 60 * 1_000,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      refetchOnReconnect: 'always',
+    },
+  },
+});
 
 const IS_DEV = import.meta.env.DEV;
 

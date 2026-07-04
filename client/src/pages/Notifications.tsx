@@ -88,7 +88,9 @@ const Notifications = () => {
   const { data, isLoading } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => notificationService.list({ limit: 50 }).then((r: any) => r.data as { data: Notification[]; unread: number }),
-    refetchInterval: 30000,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+    // No refetchInterval — real-time updates arrive via socket (notification:new)
   });
 
   const notifications = (data?.data ?? []).filter(n => filterNotif(n));

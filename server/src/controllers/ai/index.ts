@@ -87,12 +87,13 @@ exports.getTranscript = asyncHandler(async (req, res) => {
     return ApiResponse.ok(res, {
       transcript: result?.transcript || '',
       chunks:     paged,
+      allChunks:  chunks,
       total:      chunks.length,
       page:       Number(page),
       limit:      Number(limit),
     }, 'Transcript retrieved');
   } catch {
-    return ApiResponse.ok(res, { transcript: '', chunks: [], total: 0, page: 1, limit: 100 }, 'No transcript yet');
+    return ApiResponse.ok(res, { transcript: '', chunks: [], allChunks: [], total: 0, page: 1, limit: 100 }, 'No transcript yet');
   }
 });
 

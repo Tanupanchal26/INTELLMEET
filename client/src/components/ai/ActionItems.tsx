@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { CheckSquare, User, Zap, Check, Loader2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useAI } from '../../hooks/useAI';
 import { aiService } from '../../api/ai.api';
 import Badge from '../common/Badge';
@@ -11,15 +12,23 @@ const PRIORITY_BADGE = {
 } as const;
 
 const ActionItems = ({ meetingId }: { meetingId: string }) => {
-  const { actionItems, isGenerating, setActionItems, toggleActionItemDone, generateSummary } = useAI(meetingId);
+  const { actionItems, isGenerating, setActionItems, toggleActionItemDone } = useAI(meetingId);
 
-  // Load from API on mount if not already loaded
+  // Use TanStack Query so action items are cached — no re-fetch on panel switch
+  const { data } = useQuery({
+    queryKey: ['meeting-action-items', meetingId],
+    queryFn: () => aiService.getActionItems(meetingId).then((r) => r.data),
+    enabled: !!meetingId && actionItems.length === 0,
+    staleTime: 30 * 60_000,
+    gcTime: 60 * 60_000,
+  });
+
+  // Sync fetched action items into the AI store once
   useEffect(() => {
-    if (actionItems.length > 0) return;
-    aiService.getActionItems(meetingId)
-      .then(({ data }) => setActionItems(data.actionItems))
-      .catch(() => {});
-  }, [meetingId]);
+    if (data?.actionItems?.length && actionItems.length === 0) {
+      setActionItems(data.actionItems);
+    }
+  }, [data?.actionItems, actionItems.length, setActionItems]);
 
   if (isGenerating) return (
     <div className="flex items-center justify-center h-full gap-2">

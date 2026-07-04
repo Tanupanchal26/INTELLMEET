@@ -58,18 +58,54 @@ export const useAI = (meetingId: string) => {
   const generateSummary = useCallback(async () => {
     store.setGenerating(true);
     try {
+      // 1. Try REST transcript first (consolidated after meeting ends)
       const { data: tData } = await aiService.getTranscript(meetingId);
-      const transcript = tData?.transcript ?? '';
-      if (!transcript.trim()) {
-        toast.error('No transcript found. Please record or upload a transcript first.');
+
+      // 2. Fall back to in-memory transcript chunks streamed during the live meeting
+      //    tData.transcript is empty during live meetings — chunks are the source of truth
+      let transcript = tData?.transcript?.trim() ?? '';
+      if (!transcript) {
+        // Build from allChunks (full list) or paged chunks
+        const chunks = tData?.allChunks ?? tData?.chunks ?? [];
+        if (chunks.length > 0) {
+          transcript = chunks.map((c: any) => `${c.speaker ?? 'Speaker'}: ${c.text}`).join('\n');
+        }
+      }
+
+      // 3. Fall back to the live in-memory transcript from the AI store
+      //    (populated by socket meeting:transcript-chunk events during the call)
+      if (!transcript) {
+        transcript = store.transcript?.trim() ?? '';
+      }
+
+      if (!transcript) {
+        toast.error('No transcript available yet. Start speaking or enable transcription first.');
+        store.setGenerating(false);
         return;
       }
+
       const { data } = await aiService.generateSummary(meetingId, transcript);
+
+      if (!data?.summary) {
+        toast.error('Summary generation failed — the AI returned an empty response.');
+        store.setGenerating(false);
+        return;
+      }
+
       store.setSummary(data.summary);
-      const { data: ai } = await aiService.getActionItems(meetingId);
-      store.setActionItems(ai.actionItems);
-    } catch {
-      toast.error('Failed to generate summary');
+
+      // Fetch action items in parallel — don't block on failure
+      aiService.getActionItems(meetingId)
+        .then(({ data: ai }) => store.setActionItems(ai.actionItems ?? []))
+        .catch(() => {});
+
+      toast.success('Summary generated!');
+    } catch (err: any) {
+      const raw = err?.response?.data?.message || err?.message || '';
+      const msg = raw.includes('429') || raw.includes('quota')
+        ? 'AI quota exceeded. Please check your OpenAI billing at platform.openai.com/settings/billing'
+        : raw || 'Failed to generate summary';
+      toast.error(msg, { duration: 6000 });
     } finally {
       store.setGenerating(false);
     }

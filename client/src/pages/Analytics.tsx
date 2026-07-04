@@ -41,6 +41,8 @@ export default function Analytics() {
   const { data: rawData, isLoading, error } = useQuery({
     queryKey: ['analytics'],
     queryFn: () => analyticsService.getAnalytics().then((res: any) => res?.data ?? res),
+    staleTime: 10 * 60_000,
+    gcTime: 30 * 60_000,
   });
 
   const handleExportAnalytics = () => {

@@ -37,8 +37,14 @@ const cacheDel = async (...keys: string[]) => {
 const resolveTranscript = async (meetingId: string): Promise<string> => {
   const result = await AIResult.findOne({ meeting: meetingId });
   if (!result) return '';
+  // Prefer the consolidated transcript field
   if (result.transcript?.trim()) return result.transcript;
-  return (result.transcriptChunks || []).map((c: any) => `${c.speaker}: ${c.text}`).join('\n');
+  // Fall back to streaming chunks (populated during live meeting via socket)
+  const chunks = result.transcriptChunks || [];
+  if (chunks.length > 0) {
+    return chunks.map((c: any) => `${c.speaker ?? 'Speaker'}: ${c.text}`).join('\n');
+  }
+  return '';
 };
 
 exports.saveTranscript = async (meetingId: string, transcript: string) => {

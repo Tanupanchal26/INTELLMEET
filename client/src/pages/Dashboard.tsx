@@ -81,18 +81,21 @@ export default function Dashboard() {
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const firstName = authUser?.name?.split(' ')[0] ?? 'there';
 
-  const { data: recordingsData } = useQuery({
-    queryKey: ['dashboard-recordings'],
-    queryFn: () => recordingService.getRecordings().then((res: any) => (res?.data ?? res ?? []).slice(0, 4)),
-  });
-  const recentRecordings: any[] = recordingsData ?? [];
-
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => analyticsService.getDashboard().then((res: any) => res?.data ?? res),
-    refetchOnWindowFocus: true,
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
   });
+
+  const { data: recordingsData } = useQuery({
+    queryKey: ['dashboard-recordings'],
+    queryFn: () => recordingService.getRecordings().then((res: any) => (res?.data ?? res ?? []).slice(0, 4)),
+    staleTime: 5 * 60_000,
+    gcTime: 30 * 60_000,
+  });
+
+  const recentRecordings: any[] = recordingsData ?? [];
 
   // Listen for real-time dashboard:refresh pushed by the server
   const qc = useQueryClient();

@@ -32,20 +32,28 @@ const PROMPT_SUGGESTIONS = [
 ];
 
 const AISummary = () => {
-  const [selectedId, setSelectedId]   = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab]     = useState<'summary' | 'actions' | 'minutes' | 'followup'>('summary');
-  const [chatMsg, setChatMsg]         = useState('');
-  const [chatHistory, setChatHistory] = useState<{ role: string; content: string }[]>([]);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [searching, setSearching]     = useState(false);
-  const [followUpSuggestions, setFollowUpSuggestions] = useState<any[]>([]);
-  const [followUpLoading, setFollowUpLoading] = useState(false);
-
   const store = useAIStore();
   const authUser = useAppSelector((s) => s.auth.user);
   const token = useAppSelector((s) => s.auth.accessToken) || localStorage.getItem('im_access_token') || '';
+
+  // All page-level state lives in Zustand so it survives navigation
+  const selectedId          = store.aiPageSelectedId;
+  const activeTab           = store.aiPageActiveTab;
+  const chatHistory         = store.aiPageChatHistory;
+  const searchQuery         = store.aiPageSearchQuery;
+  const searchResults       = store.aiPageSearchResults;
+  const followUpSuggestions = store.aiPageFollowUpSuggestions;
+
+  const setSelectedId          = store.setAIPageSelectedId;
+  const setActiveTab           = store.setAIPageActiveTab;
+  const setSearchQuery         = store.setAIPageSearchQuery;
+  const setSearchResults       = store.setAIPageSearchResults;
+  const setFollowUpSuggestions = store.setAIPageFollowUpSuggestions;
+
+  const [chatMsg, setChatMsg]         = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [searching, setSearching]     = useState(false);
+  const [followUpLoading, setFollowUpLoading] = useState(false);
 
   const { data: meetingData, isLoading } = useQuery({
     queryKey: ['meetings-ai'],
@@ -53,7 +61,8 @@ const AISummary = () => {
       import('../api/meeting.api').then((m) =>
         m.meetingService.getAll({ limit: 30, status: 'ended' }).then((r: any) => r?.data ?? r ?? [])
       ),
-    staleTime: 60_000,
+    staleTime: 10 * 60_000,
+    gcTime: 30 * 60_000,
   });
   const meetings: any[] = Array.isArray(meetingData) ? meetingData : (meetingData?.data ?? []);
 
@@ -61,7 +70,8 @@ const AISummary = () => {
     queryKey: ['ai-result', selectedId],
     queryFn: () => aiService.getResult(selectedId!).then((r: any) => r?.data ?? r),
     enabled: !!selectedId,
-    staleTime: 5 * 60_000,
+    staleTime: 30 * 60_000,   // AI results are expensive — cache for 30 min
+    gcTime: 60 * 60_000,      // keep in memory for 1 hour
     placeholderData: (prev: any) => prev,
     retry: 2,
   });
@@ -122,14 +132,14 @@ const AISummary = () => {
     setChatMsg('');
     setChatLoading(true);
     const updated = [...chatHistory, { role: 'user', content: msg }];
-    setChatHistory(updated);
+    store.setAIPageChatHistory(updated);
     try {
       const res: any = await aiService.assistantChat(selectedId, msg, chatHistory);
       const reply = res?.data?.reply ?? res?.reply ?? 'No response';
-      setChatHistory([...updated, { role: 'assistant', content: reply }]);
+      store.setAIPageChatHistory([...updated, { role: 'assistant', content: reply }]);
     } catch (err: any) {
       const errMsg = err?.message || 'Assistant unavailable';
-      setChatHistory([...updated, { role: 'assistant', content: `Sorry, I couldn't process that. (${errMsg})` }]);
+      store.setAIPageChatHistory([...updated, { role: 'assistant', content: `Sorry, I couldn't process that. (${errMsg})` }]);
     } finally { setChatLoading(false); }
   };
 
@@ -237,7 +247,7 @@ const AISummary = () => {
             meetings.map((m: any) => (
               <button
                 key={m._id}
-                onClick={() => { setSelectedId(m._id); setChatHistory([]); setFollowUpSuggestions([]); }}
+                onClick={() => { setSelectedId(m._id); store.setAIPageChatHistory([]); setFollowUpSuggestions([]); }}
                 className={clsx(
                   'flex items-center gap-2.5 p-2.5 rounded-xl text-left transition-all w-full border cursor-pointer',
                   selectedId === m._id
