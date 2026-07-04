@@ -8,6 +8,10 @@ cloudinary.config({
   api_secret: cloudinaryConfig.secret,
 });
 
+console.log('[CLOUDINARY DEBUG] cloud_name:', cloudinaryConfig.name);
+console.log('[CLOUDINARY DEBUG] api_key:', cloudinaryConfig.key);
+console.log('[CLOUDINARY DEBUG] api_secret length:', cloudinaryConfig.secret?.length);
+
 module.exports = cloudinary;
 
 export {};

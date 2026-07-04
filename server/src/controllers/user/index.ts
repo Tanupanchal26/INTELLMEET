@@ -30,19 +30,24 @@ exports.uploadAvatar = asyncHandler(async (req, res) => {
   if (!req.file.mimetype.startsWith('image/')) throw ApiError.badRequest('File must be an image');
   if (req.file.size > 8 * 1024 * 1024) throw ApiError.badRequest('Image must be under 8 MB');
 
-  const result = await new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        folder:         'intellmeet/avatars',
-        public_id:      `avatar_${req.user.id}`,
-        overwrite:      true,
-        transformation: [{ width: 256, height: 256, crop: 'fill', gravity: 'face' }],
-        resource_type:  'image',
-      },
-      (err, res) => (err ? reject(err) : resolve(res))
-    );
-    stream.end(req.file.buffer);
-  });
+  let result: any;
+  try {
+    result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder:         'intellmeet/avatars',
+          public_id:      `avatar_${req.user._id}`,
+          overwrite:      true,
+          transformation: [{ width: 256, height: 256, crop: 'fill', gravity: 'face' }],
+          resource_type:  'image',
+        },
+        (err: any, res: any) => (err ? reject(err) : resolve(res))
+      );
+      stream.end(req.file.buffer);
+    });
+  } catch (err: any) {
+    throw ApiError.internal(`Cloudinary upload failed: ${err?.message ?? err}`);
+  }
 
   const avatarUrl = result.secure_url;
   const user = await userService.updateAvatar(req.user._id, avatarUrl);
