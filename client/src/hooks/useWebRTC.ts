@@ -87,6 +87,9 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
     peersRef.current.set(remoteSocketId, pc);
 
+    // Suppress onnegotiationneeded — we manage offer/answer manually
+    pc.onnegotiationneeded = null;
+
     // Add current local tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
@@ -111,20 +114,6 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
           roomId, to: remoteSocketId,
           signal: { type: 'candidate', candidate: event.candidate },
         });
-      }
-    };
-
-    pc.onnegotiationneeded = async () => {
-      try {
-        if (pc.signalingState !== 'stable') return;
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit('meeting:signal', {
-          roomId, to: remoteSocketId,
-          signal: { type: 'offer', sdp: pc.localDescription },
-        });
-      } catch (err) {
-        console.error('[WebRTC] Negotiation error:', err);
       }
     };
 
@@ -179,61 +168,46 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   useEffect(() => {
     let isMounted = true;
     const initMedia = async () => {
-      // Step 1: try camera + mic
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-        if (!isMounted) { stream.getTracks().forEach(t => t.stop()); return; }
+      // Race camera+mic and audio-only in parallel for fastest startup
+      const [camMicResult, audioResult] = await Promise.allSettled([
+        navigator.mediaDevices.getUserMedia({ audio: true, video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } }),
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false }),
+      ]);
+
+      if (!isMounted) {
+        if (camMicResult.status === 'fulfilled') camMicResult.value.getTracks().forEach(t => t.stop());
+        if (audioResult.status === 'fulfilled') audioResult.value.getTracks().forEach(t => t.stop());
+        return;
+      }
+
+      if (camMicResult.status === 'fulfilled') {
+        // Stop the audio-only stream since we have camera+mic
+        if (audioResult.status === 'fulfilled') audioResult.value.getTracks().forEach(t => t.stop());
+        const stream = camMicResult.value;
         stream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
-        stream.getVideoTracks().forEach(t => { t.enabled = true; });
         localStreamRef.current = stream;
         mediaReadyRef.current = true;
         setIsMediaReady(true);
         setLocalStream(new MediaStream(stream.getTracks()));
         return;
-      } catch (err: unknown) {
-        const e = err as DOMException;
-        console.warn('[WebRTC] Camera+mic failed:', e?.name, e?.message);
       }
 
-      // Step 2: try mic only
-      try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        if (!isMounted) { audioStream.getTracks().forEach(t => t.stop()); return; }
-        audioStream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
-        localStreamRef.current = audioStream;
+      if (audioResult.status === 'fulfilled') {
+        const stream = audioResult.value;
+        stream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
+        localStreamRef.current = stream;
         mediaReadyRef.current = true;
         setIsMediaReady(true);
-        setLocalStream(new MediaStream(audioStream.getTracks()));
+        setLocalStream(new MediaStream(stream.getTracks()));
         toast('No camera found — joined with audio only', { icon: '🎤' });
         return;
-      } catch (err: unknown) {
-        const e = err as DOMException;
-        console.warn('[WebRTC] Audio-only failed:', e?.name, e?.message);
       }
 
-      // Step 3: try camera only
-      try {
-        const videoStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
-        if (!isMounted) { videoStream.getTracks().forEach(t => t.stop()); return; }
-        localStreamRef.current = videoStream;
-        mediaReadyRef.current = true;
-        setIsMediaReady(true);
-        setLocalStream(new MediaStream(videoStream.getTracks()));
-        toast('No microphone found — joined with video only', { icon: '📷' });
-        return;
-      } catch (err: unknown) {
-        const e = err as DOMException;
-        console.warn('[WebRTC] Video-only failed:', e?.name, e?.message);
-      }
-
-      // Step 4: all failed
+      // All failed
       if (isMounted) {
         mediaReadyRef.current = true;
         setIsMediaReady(true);
-        toast(
-          '🚫 Camera & mic blocked. In Chrome: click the 🔒 lock icon → allow Camera & Microphone → refresh.',
-          { duration: 8000 }
-        );
+        toast('🚫 Camera & mic blocked. Click the 🔒 lock icon → allow Camera & Microphone → refresh.', { duration: 8000 });
       }
     };
     initMedia();

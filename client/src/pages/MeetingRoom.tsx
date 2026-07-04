@@ -136,9 +136,15 @@ const MeetingRoom = () => {
     if (!id) return;
     const initMeeting = async () => {
       try {
-        const res: any = await meetingService.start(id);
-        // axios interceptor unwraps res.data → res is ApiResponse body {success, data: meeting}
-        const meeting = res?.data ?? res;
+        // Try to start (host) — fall back to getById (participant)
+        let meeting: any;
+        try {
+          const res: any = await meetingService.start(id);
+          meeting = res?.data ?? res;
+        } catch {
+          const res: any = await meetingService.getById(id);
+          meeting = res?.data ?? res;
+        }
         const roomId = meeting?.roomId || id;
         setSocketRoomId(roomId);
         setCurrentMeeting({
@@ -149,7 +155,6 @@ const MeetingRoom = () => {
           startedAt: meeting?.startedAt,
         });
       } catch {
-        // Meeting may already be started or user is joining (not host)
         setCurrentMeeting({ id, title: 'Live Meeting', roomId: id, host: user?.id ?? '' });
       }
     };

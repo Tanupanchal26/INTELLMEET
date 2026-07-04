@@ -25,6 +25,8 @@ export const useMeeting = (roomId?: string) => {
     const onUserJoined  = (data: any) => {
       // Never add ourselves — the local tile is rendered separately
       if (data?.socketId === socket.id) return;
+      // isHost not sent in user-joined; derive from currentMeeting.host
+      const { currentMeeting } = useMeetingStore.getState();
       addParticipant({
         id:       sanitize(data?.user?.id   ?? data?.id),
         name:     sanitize(data?.user?.name ?? data?.name ?? 'Unknown'),
@@ -33,7 +35,9 @@ export const useMeeting = (roomId?: string) => {
         isMuted:    Boolean(data?.isMuted),
         isVideoOff: Boolean(data?.isVideoOff ?? true),
         isScreenSharing: Boolean(data?.isScreenSharing),
-        isHost:   Boolean(data?.isHost),
+        isHost:   currentMeeting?.host
+          ? (data?.user?.id ?? data?.id) === currentMeeting.host
+          : Boolean(data?.isHost),
       });
     };
     const onUserLeft    = ({ socketId }: any)   => removeParticipant(sanitize(socketId));

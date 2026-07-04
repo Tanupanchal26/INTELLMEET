@@ -4,8 +4,8 @@ import { useMeetingStore } from '../../store/meeting/meeting.store';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { clsx } from 'clsx';
 
-const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLocal, stream, isSingle }: {
-  name: string; isMuted: boolean; isVideoOff: boolean; isScreenSharing?: boolean; isActive?: boolean; isLocal?: boolean; stream?: MediaStream | null; isSingle?: boolean;
+const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLocal, isHost, stream, isSingle }: {
+  name: string; isMuted: boolean; isVideoOff: boolean; isScreenSharing?: boolean; isActive?: boolean; isLocal?: boolean; isHost?: boolean; stream?: MediaStream | null; isSingle?: boolean;
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -65,6 +65,11 @@ const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLoc
               Presenter
             </span>
           )}
+          {isHost && (
+            <span className="text-xs font-bold text-white bg-yellow-500/80 backdrop-blur-md rounded-xl px-2 py-1 shadow-lg border border-white/10">
+              Host
+            </span>
+          )}
         </div>
         <div className="flex gap-2">
           {isMuted    && <div className="w-8 h-8 rounded-full bg-red-500/90 flex items-center justify-center shadow-lg backdrop-blur-md border border-white/10"><MicOff  size={14} className="text-white" /></div>}
@@ -76,14 +81,15 @@ const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLoc
 };
 
 const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream | null; remoteStreams?: Map<string, MediaStream> }) => {
-  const { participants, isVideoOff, isMuted, isScreenSharing } = useMeetingStore();
+  const { participants, isVideoOff, isMuted, isScreenSharing, currentMeeting } = useMeetingStore();
   const user = useAppSelector((s) => s.auth.user);
-  
-  // Filter out the local user from participants — they are rendered as the hardcoded local tile
-  const remoteParticipants = participants.filter(p => p.id !== user?.id);
-  
+  const isHostUser = user?.id === currentMeeting?.host;
+
+  // participants store already excludes local user (filtered in useMeeting by socketId)
+  const remoteParticipants = participants;
+
   const allTiles = [
-    { id: 'local', name: user?.name || 'You', isMuted, isVideoOff, isScreenSharing, isLocal: true, isActive: true, stream: localStream },
+    { id: 'local', name: user?.name || 'You', isMuted, isVideoOff, isScreenSharing, isLocal: true, isActive: true, isHost: isHostUser, stream: localStream },
     ...remoteParticipants.map(p => ({
       id: p.socketId,
       name: p.name,
@@ -92,6 +98,7 @@ const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream |
       isScreenSharing: p.isScreenSharing,
       isLocal: false,
       isActive: false,
+      isHost: p.isHost,
       stream: remoteStreams?.get(p.socketId) || null,
     })),
   ];

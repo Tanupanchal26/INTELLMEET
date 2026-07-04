@@ -107,7 +107,6 @@ const Lobby = () => {
 
     try {
       const response: any = await meetingService.join(code);
-      // axios interceptor unwraps res.data → response is ApiResponse body {success, data: meeting}
       const meeting = response?.data ?? response;
       const id = meeting?._id || meeting?.id;
       if (id) {
@@ -117,7 +116,8 @@ const Lobby = () => {
         toast.error('Could not retrieve meeting details');
       }
     } catch (err: any) {
-      toast.error(err?.message || 'Meeting not found. Check the ID or code and try again.');
+      const msg = err?.response?.data?.message || err?.message || 'Meeting not found. Check the ID or code.';
+      toast.error(msg);
     }
   };
 
