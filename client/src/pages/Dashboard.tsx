@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Video, CheckSquare, Users, Calendar, BarChart2,
-  Sparkles, Bell, Clock, ArrowRight, Zap, Brain
+  Sparkles, Bell, Clock, ArrowRight, Zap, Brain, Film
 } from 'lucide-react';
+import { recordingService } from '../api/recording.api';
 import { useAppSelector } from '../hooks/useAppDispatch';
 import { ROUTES, MEETING_ROUTE } from '../constants';
 import { motion as ds } from '../design-system/motion';
@@ -67,6 +68,7 @@ const QUICK = [
   { label: 'Create Task', icon: CheckSquare, to: ROUTES.TASKS, color: 'text-emerald-600 dark:text-emerald-400', hoverClass: 'hover-emerald', bg: 'bg-emerald-50/40 dark:bg-emerald-950/20', border: 'border-emerald-100/50 dark:border-emerald-900/10' },
   { label: 'AI Summary', icon: Brain, to: ROUTES.AI_SUMMARY, color: 'text-purple-600 dark:text-purple-400', hoverClass: 'hover-purple', bg: 'bg-purple-50/40 dark:bg-purple-950/20', border: 'border-purple-100/50 dark:border-purple-900/10' },
   { label: 'Analytics', icon: BarChart2, to: ROUTES.ANALYTICS, color: 'text-amber-600 dark:text-amber-400', hoverClass: 'hover-amber', bg: 'bg-amber-50/40 dark:bg-amber-950/20', border: 'border-amber-100/50 dark:border-amber-900/10' },
+  { label: 'Recordings', icon: Film, to: ROUTES.RECORDINGS, color: 'text-rose-600 dark:text-rose-400', hoverClass: 'hover-rose', bg: 'bg-rose-50/40 dark:bg-rose-950/20', border: 'border-rose-100/50 dark:border-rose-900/10' },
 ];
 
 export default function Dashboard() {
@@ -75,6 +77,12 @@ export default function Dashboard() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const firstName = authUser?.name?.split(' ')[0] ?? 'there';
+
+  const { data: recordingsData } = useQuery({
+    queryKey: ['dashboard-recordings'],
+    queryFn: () => recordingService.getRecordings().then((res: any) => (res?.data ?? res ?? []).slice(0, 4)),
+  });
+  const recentRecordings: any[] = recordingsData ?? [];
 
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
@@ -193,7 +201,7 @@ export default function Dashboard() {
       </motion.div>
 
       <motion.div {...fu(0.25)}>
-        <div className="db-grid-3">
+        <div className="db-grid-2">
           <Card>
             <div className="db-card-header">
               <div className="db-card-header-left">
@@ -207,6 +215,30 @@ export default function Dashboard() {
                   <div className={clsx("db-quick-icon-wrapper", bg)}><Icon size={18} className={color} /></div>
                   <span className="db-quick-label">{label}</span>
                 </Link>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <CardHead icon={Film} title="Recent Recordings" linkTo={ROUTES.RECORDINGS} bgClass="bg-rose-500/10 border border-rose-500/20" colorClass="text-rose-600 dark:text-rose-400" />
+            <div className="db-meeting-list">
+              {recentRecordings.length === 0 ? (
+                <p className="text-xs text-[var(--color-text-secondary)] px-1 py-4 text-center">No recordings yet</p>
+              ) : recentRecordings.map((r: any) => (
+                <button key={r._id} onClick={() => navigate(`/recordings/${r._id}`)} className="db-meeting-item">
+                  <div className="db-meeting-icon">
+                    <Film size={16} className="text-rose-500" />
+                  </div>
+                  <div className="db-meeting-info">
+                    <p className="db-meeting-name">{r.meetingId?.title || 'Untitled Meeting'}</p>
+                    <div className="db-meeting-meta">
+                      <div className="db-meeting-meta-item"><Clock size={12} /><span>{timeAgo(r.createdAt)}</span></div>
+                      <span className="db-meeting-meta-divider">•</span>
+                      <span className="text-xs">{Math.floor(r.duration / 60)}:{(r.duration % 60).toString().padStart(2, '0')}</span>
+                    </div>
+                  </div>
+                  <span className="db-status-badge">{(r.sizeBytes / 1024 / 1024).toFixed(1)} MB</span>
+                </button>
               ))}
             </div>
           </Card>

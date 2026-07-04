@@ -6,7 +6,7 @@ const recordingSchema = new mongoose.Schema({
   meetingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Meeting', required: true, index: true },
   ownerId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   
-  url:       { type: String, required: true },
+  url:       { type: String, required: false, default: '' },
   sizeBytes: { type: Number, default: 0 },
   duration:  { type: Number, default: 0 }, // in seconds
   

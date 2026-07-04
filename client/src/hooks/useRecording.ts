@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { useMeetingStore } from '../store/meeting/meeting.store';
 import { recordingService } from '../api/recording.api';
 import { getSocket } from '../utils/socket';
@@ -9,14 +9,14 @@ export const useRecording = (
   localStream: MediaStream | null,
   screenStreamRef?: React.RefObject<MediaStream | null>,
 ) => {
-  const { isRecording, toggleRecording, isScreenSharing } = useMeetingStore();
+  const { isRecording, toggleRecording } = useMeetingStore();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  const isRecordingRef = useRef(false);
 
   const getRecordingStream = useCallback((): MediaStream | null => {
-    // Prefer screen share stream when active
+    const { isScreenSharing } = useMeetingStore.getState();
     if (isScreenSharing && screenStreamRef?.current) {
-      // Merge screen video with local audio
       const tracks: MediaStreamTrack[] = [
         ...screenStreamRef.current.getVideoTracks(),
         ...(localStream?.getAudioTracks() ?? []),
@@ -24,76 +24,111 @@ export const useRecording = (
       return tracks.length ? new MediaStream(tracks) : screenStreamRef.current;
     }
     return localStream;
-  }, [isScreenSharing, screenStreamRef, localStream]);
+  }, [screenStreamRef, localStream]);
+
+  const doUpload = useCallback(async () => {
+    if (chunksRef.current.length === 0) return;
+    const blob = new Blob(chunksRef.current, { type: 'video/webm' });
+    chunksRef.current = [];
+    if (blob.size < 1000) return; // skip empty/corrupt blobs
+
+    const toastId = toast.loading('Uploading recording...');
+    try {
+      await recordingService.uploadRecording(meetingId, blob);
+      toast.success('Recording saved!', { id: toastId });
+    } catch (err: any) {
+      toast.error(`Upload failed: ${err?.response?.data?.message ?? err?.message ?? 'Unknown error'}`, { id: toastId });
+    }
+  }, [meetingId]);
 
   const startRecording = useCallback(async () => {
+    if (isRecordingRef.current) return;
     const stream = getRecordingStream();
-    if (!stream) {
-      toast.error('No stream available to record.');
-      return;
-    }
+    if (!stream || stream.getTracks().length === 0) return;
 
     const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
       ? 'video/webm;codecs=vp9'
-      : 'video/webm';
+      : MediaRecorder.isTypeSupported('video/webm')
+      ? 'video/webm'
+      : '';
 
-    const recorder = new MediaRecorder(stream, { mimeType });
-    mediaRecorderRef.current = recorder;
-    chunksRef.current = [];
+    try {
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
 
-    recorder.ondataavailable = (e) => {
-      if (e.data?.size > 0) chunksRef.current.push(e.data);
-    };
+      recorder.ondataavailable = (e) => {
+        if (e.data?.size > 0) chunksRef.current.push(e.data);
+      };
 
-    recorder.start(1000);
-    toggleRecording();
+      recorder.start(1000);
+      isRecordingRef.current = true;
+      toggleRecording(); // set isRecording = true — safe: guarded by isRecordingRef above
 
-    const socket = getSocket();
-    if (socket?.connected) socket.emit('recording:started', { roomId: meetingId });
+      const socket = getSocket();
+      if (socket?.connected) socket.emit('recording:started', { roomId: meetingId });
+    } catch (err) {
+      console.error('[Recording] Failed to start:', err);
+    }
   }, [getRecordingStream, meetingId, toggleRecording]);
 
-  // Switch recording source when screen share starts/stops without interrupting
+  const stopRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === 'inactive') {
+      if (isRecordingRef.current) {
+        isRecordingRef.current = false;
+        toggleRecording(); // set isRecording = false
+      }
+      doUpload();
+      return;
+    }
+
+    recorder.onstop = async () => {
+      isRecordingRef.current = false;
+      toggleRecording(); // set isRecording = false — safe: called exactly once here
+      const socket = getSocket();
+      if (socket?.connected) socket.emit('recording:stopped', { roomId: meetingId });
+      await doUpload();
+    };
+
+    // Request final chunk before stopping
+    recorder.requestData();
+    recorder.stop();
+    mediaRecorderRef.current = null;
+  }, [meetingId, toggleRecording, doUpload]);
+
+  // Switch recording source (screen share ↔ camera) without losing chunks
   const switchSource = useCallback((newStream: MediaStream) => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === 'inactive') return;
 
-    // Stop current recorder, collect chunks, start new one on new stream
-    recorder.onstop = null; // prevent upload on this intermediate stop
+    recorder.onstop = null; // don't upload on this intermediate stop
+    recorder.requestData();
     recorder.stop();
 
     const mimeType = recorder.mimeType || 'video/webm';
-    const newRecorder = new MediaRecorder(newStream, { mimeType });
-    mediaRecorderRef.current = newRecorder;
-
-    newRecorder.ondataavailable = (e) => {
-      if (e.data?.size > 0) chunksRef.current.push(e.data);
-    };
-    newRecorder.start(1000);
+    try {
+      const newRecorder = new MediaRecorder(newStream, { mimeType });
+      mediaRecorderRef.current = newRecorder;
+      newRecorder.ondataavailable = (e) => {
+        if (e.data?.size > 0) chunksRef.current.push(e.data);
+      };
+      newRecorder.start(1000);
+    } catch (err) {
+      console.error('[Recording] Failed to switch source:', err);
+    }
   }, []);
 
-  const stopRecording = useCallback(() => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === 'inactive') return;
-
-    recorder.onstop = async () => {
-      toggleRecording();
-      const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-      chunksRef.current = [];
-
-      const socket = getSocket();
-      if (socket?.connected) socket.emit('recording:stopped', { roomId: meetingId });
-
-      const toastId = toast.loading('Uploading recording...');
-      try {
-        await recordingService.uploadRecording(meetingId, blob);
-        toast.success('Recording saved!', { id: toastId });
-      } catch {
-        toast.error('Failed to upload recording.', { id: toastId });
+  // Cleanup: stop recorder on unmount without uploading twice
+  useEffect(() => {
+    return () => {
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.onstop = null;
+        recorder.stop();
       }
     };
+  }, []);
 
-    recorder.stop();
-  }, [meetingId, toggleRecording]);
-
-  return { startRecording, stopRecording, switchSource };
+  return { startRecording, stopRecording, switchSource, isRecordingRef };
 };
