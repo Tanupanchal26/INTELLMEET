@@ -274,11 +274,12 @@ export const startMeeting = async (
   const meeting = await meetingRepo.findById(meetingId, tenantId);
   assertHost(meeting, userId);
 
-  if (meeting.status === MEETING_STATUS.ACTIVE) {
-    throw ApiError.badRequest('Meeting is already active');
-  }
   if (meeting.status === MEETING_STATUS.ENDED) {
-    throw ApiError.badRequest('Cannot restart an ended meeting');
+    throw ApiError.badRequest('Cannot restart an ended meeting.');
+  }
+  // Already active — idempotent, just return it (host rejoining their own meeting)
+  if (meeting.status === MEETING_STATUS.ACTIVE) {
+    return meeting;
   }
 
   const started = await meetingRepo.startMeeting(meetingId, tenantId);
@@ -343,6 +344,11 @@ export const joinByRoomId = async (
   const Meeting = require('../models/Meeting');
   const q = code.trim();
 
+  // Reject codes that have been invalidated by meeting:end
+  if (q.startsWith('ENDED_')) {
+    throw ApiError.badRequest('This meeting has ended. The join code is no longer valid.');
+  }
+
   // Accept meetingId (e.g. "ABCD-1234"), joinCode, or raw roomId (UUID)
   const meeting = await Meeting.findOne({
     $or: [{ meetingId: q }, { joinCode: q }, { roomId: q }],
@@ -350,7 +356,7 @@ export const joinByRoomId = async (
 
   if (!meeting) throw ApiError.notFound('Meeting not found. Check the ID or code.');
   if (meeting.status === MEETING_STATUS.ENDED) {
-    throw ApiError.badRequest('This meeting has already ended.');
+    throw ApiError.badRequest('This meeting has already ended and cannot be rejoined.');
   }
 
   await Meeting.findByIdAndUpdate(

@@ -95,12 +95,16 @@ class MeetingRepository extends BaseRepository {
   }
 
   async startMeeting(meetingId: string, tenantId: TenantId) {
+    // If already active, return it as-is (idempotent — host rejoining their own meeting)
+    const existing = await Meeting.findOne({ _id: meetingId, tenantId });
+    if (!existing) return null;
+    if (existing.status === MEETING_STATUS.ACTIVE) return existing;
+
     const meeting = await Meeting.findOneAndUpdate(
       { _id: meetingId, tenantId, status: MEETING_STATUS.SCHEDULED },
       { $set: { status: MEETING_STATUS.ACTIVE, startedAt: new Date() } },
       { new: true }
     );
-    // Return null if already active or ended — caller handles the error
     return meeting;
   }
 

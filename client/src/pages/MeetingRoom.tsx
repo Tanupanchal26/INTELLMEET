@@ -23,6 +23,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap';
 import { meetingService } from '../api/meeting.api';
 import Badge from '../components/common/Badge';
 import Logo from '../components/common/Logo';
+import toast from 'react-hot-toast';
 
 type Panel   = 'chat' | 'participants' | 'ai' | 'notes';
 type AITab   = 'summary' | 'transcript' | 'actions' | 'assistant';
@@ -77,18 +78,48 @@ const AIPanel = ({ meetingId }: { meetingId: string }) => {
 /* ── Notes sub-panel ── */
 const NotesPanel = ({ meetingId }: { meetingId: string }) => {
   const [notes, setNotes] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  // Load persisted notes on mount
+  useEffect(() => {
+    if (!meetingId) return;
+    meetingService.getNotes(meetingId)
+      .then((res: any) => {
+        const content = res?.data?.content ?? res?.content ?? '';
+        if (content) setNotes(content);
+      })
+      .catch(() => {}); // silently ignore — notes may not exist yet
+
+    // Join the collaborative notes socket room
+    import('../utils/socket').then(({ getSocket }) => {
+      getSocket()?.emit('notes:join', meetingId);
+    });
+    return () => {
+      import('../utils/socket').then(({ getSocket }) => {
+        getSocket()?.emit('notes:leave', meetingId);
+      });
+    };
+  }, [meetingId]);
 
   const handleSave = useCallback(async () => {
+    if (!meetingId || status === 'saving') return;
+    setStatus('saving');
     try {
+      // Persist via REST — guaranteed write to MongoDB
+      await meetingService.saveNotes(meetingId, { content: notes });
+      // Also broadcast to collaborators via socket
       const { getSocket } = await import('../utils/socket');
-      getSocket().emit('notes:update', { meetingId, content: notes });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      getSocket()?.emit('notes:update', { meetingId, content: notes });
+      setStatus('saved');
+      setTimeout(() => setStatus('idle'), 2000);
     } catch {
-      // socket may not be ready
+      setStatus('error');
+      setTimeout(() => setStatus('idle'), 3000);
+      toast.error('Failed to save notes. Please try again.');
     }
-  }, [meetingId, notes]);
+  }, [meetingId, notes, status]);
+
+  const saveLabel = status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved ✓' : status === 'error' ? 'Error ✕' : 'Save';
 
   return (
     <div className="p-4 h-full flex flex-col gap-3 bg-[var(--color-surface-2)]/40">
@@ -96,15 +127,23 @@ const NotesPanel = ({ meetingId }: { meetingId: string }) => {
         <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.1em]">Meeting Notes</p>
         <button
           onClick={handleSave}
-          className="text-[10px] text-[var(--color-primary)] hover:text-[var(--color-primary-hover)] transition-colors font-semibold"
+          disabled={status === 'saving'}
+          className={clsx(
+            'text-[10px] font-semibold transition-colors',
+            status === 'saved'  && 'text-green-400',
+            status === 'error'  && 'text-red-400',
+            status === 'saving' && 'text-[var(--color-text-dim)] cursor-not-allowed',
+            status === 'idle'   && 'text-[var(--color-primary)] hover:text-[var(--color-primary-hover)]',
+          )}
         >
-          {saved ? 'Saved ✓' : 'Save'}
+          {saveLabel}
         </button>
       </div>
       <textarea
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
-        placeholder="Type your notes here…"
+        onKeyDown={(e) => { if (e.ctrlKey && e.key === 's') { e.preventDefault(); handleSave(); } }}
+        placeholder="Type your notes here… (Ctrl+S to save)"
         aria-label="Meeting notes"
         className={clsx(
           'flex-1 resize-none text-xs text-[var(--color-text)] leading-relaxed bg-transparent border-none outline-none placeholder:text-[var(--color-text-dim)]',

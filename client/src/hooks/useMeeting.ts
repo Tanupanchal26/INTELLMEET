@@ -65,14 +65,18 @@ export const useMeeting = (roomId?: string) => {
     };
     const onMeetingEndedByHost = () => {
       resetMeeting();
-      toast('Meeting has ended. Do not allow reconnect.', { icon: '🔴', duration: 4000 });
+      toast('Meeting has ended.', { icon: '🔴', duration: 4000 });
       navigate(ROUTES.LOBBY);
     };
 
-    const onForceEnd    = () => {
+    const onForceEnd = () => {
       resetMeeting();
-      toast('Meeting has ended. Do not allow reconnect.', { icon: '🔴', duration: 4000 });
+      toast('Meeting has ended.', { icon: '🔴', duration: 4000 });
       navigate(ROUTES.LOBBY);
+    };
+
+    const onMeetingError = ({ message }: { message: string }) => {
+      toast.error(message || 'A meeting error occurred.');
     };
 
     socket.on('meeting:user-joined',  onUserJoined);
@@ -83,6 +87,7 @@ export const useMeeting = (roomId?: string) => {
     socket.on('meeting:participants-list', onParticipantsList);
     socket.on('meeting:ended-by-host', onMeetingEndedByHost);
     socket.on('meeting:force-end',    onForceEnd);
+    socket.on('meeting:error',        onMeetingError);
     setInCall(true);
 
     return () => {
@@ -94,22 +99,29 @@ export const useMeeting = (roomId?: string) => {
       socket.off('meeting:participants-list', onParticipantsList);
       socket.off('meeting:ended-by-host', onMeetingEndedByHost);
       socket.off('meeting:force-end',    onForceEnd);
+      socket.off('meeting:error',        onMeetingError);
     };
   }, [socket, roomId, addParticipant, removeParticipant, setInCall, appendTranscript, updateParticipant, resetMeeting, navigate]);
 
-  const leaveMeeting = async (meetingId?: string) => {
+  const leaveMeeting = async (_meetingId?: string) => {
+    // Only leave the socket room — do NOT call meetingService.end() which would
+    // mark the meeting as ended for everyone when a participant simply leaves.
     socket?.emit('meeting:leave', roomId);
-    if (meetingId) await meetingService.end(meetingId).catch(() => {});
     resetMeeting();
     toast('You left the meeting', { icon: '👋' });
     navigate(ROUTES.LOBBY);
   };
 
   const endMeeting = async (meetingId: string) => {
-    socket?.emit('meeting:ended', { meetingId });
+    // Emit meeting:end (host-only termination) — NOT meeting:ended (AI pipeline).
+    // The server meeting:end handler updates DB status, closes the room, and
+    // broadcasts meeting:ended-by-host to all participants.
+    const { currentMeeting } = useMeetingStore.getState();
+    socket?.emit('meeting:end', { roomId: currentMeeting?.roomId ?? roomId });
+    // Also call REST so status is persisted even if socket ack is missed
     await meetingService.end(meetingId).catch(() => {});
     resetMeeting();
-    toast('You ended the meeting', { icon: '👋' });
+    toast('Meeting ended', { icon: '🔴' });
     navigate(ROUTES.LOBBY);
   };
 
