@@ -333,7 +333,7 @@ const Lobby = () => {
                       <span className="text-sm font-semibold truncate text-[var(--color-text)]">{m.title}</span>
                       <span className="text-xs text-[var(--color-text-dim)]">{fmt(m.startedAt || m.createdAt)}</span>
                     </div>
-                    <Button size="sm" onClick={(e) => { e.stopPropagation(); navigate(MEETING_ROUTE(m._id)); }}>Start</Button>
+                    <Button size="sm" onClick={(e) => { e.stopPropagation(); if (m.status === 'ended') { toast.error('This meeting has already ended.'); return; } navigate(MEETING_ROUTE(m._id)); }}>Start</Button>
                   </div>
                 ))
               )}

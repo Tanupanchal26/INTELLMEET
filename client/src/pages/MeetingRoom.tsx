@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MessageSquare, Users, Brain, FileText,
@@ -22,6 +22,7 @@ import { useMeeting } from '../hooks/useMeeting';
 import { useAppSelector } from '../hooks/useAppDispatch';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { meetingService } from '../api/meeting.api';
+import { ROUTES } from '../constants';
 import Badge from '../components/common/Badge';
 import Logo from '../components/common/Logo';
 import toast from 'react-hot-toast';
@@ -159,6 +160,7 @@ const NotesPanel = ({ meetingId }: { meetingId: string }) => {
 const MeetingRoom = () => {
   const { id }     = useParams<{ id: string }>();
   const user = useAppSelector((s) => s.auth.user);
+  const navigate = useNavigate();
 
   const [activePanel, setActivePanel] = useState<Panel>('chat');
   const [panelOpen,   setPanelOpen]   = useState(true);
@@ -212,6 +214,11 @@ const MeetingRoom = () => {
         // start() is idempotent: host activates, participant auto-starts or joins active
         const res: any = await meetingService.start(id);
         const meeting = res?.data ?? res;
+        if (meeting?.status === 'ended') {
+          toast.error('This meeting has already ended.');
+          navigate(ROUTES.LOBBY);
+          return;
+        }
         const roomId = meeting?.roomId || id;
         setSocketRoomId(roomId);
         setCurrentMeeting({
@@ -221,13 +228,19 @@ const MeetingRoom = () => {
           host: meeting?.host?._id || meeting?.host || user?.id || '',
           startedAt: meeting?.startedAt,
         });
-      } catch {
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || err?.message || '';
+        if (msg.toLowerCase().includes('ended')) {
+          toast.error('This meeting has already ended.');
+          navigate(ROUTES.LOBBY);
+          return;
+        }
         setCurrentMeeting({ id, title: 'Live Meeting', roomId: id, host: user?.id ?? '' });
       }
     };
     initMeeting();
     return () => setCurrentMeeting(null);
-  }, [id, user?.id, setCurrentMeeting]);
+  }, [id, user?.id, setCurrentMeeting, navigate]);
 
   const meetingTitle = currentMeeting?.title ?? 'Meeting';
 
