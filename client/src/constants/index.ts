@@ -16,6 +16,7 @@ export const ROUTES = {
   AI_SUMMARY:      '/ai-summary',
   TEAMS:           '/teams',
   TEAM:            '/teams/:id',
+  TEAM_WORKSPACE:  '/teams/:id/workspace',
   CHANNELS:        '/teams/:teamId/channels/:channelId',
   NOTIFICATIONS:   '/notifications',
   RECORDINGS:      '/recordings',
@@ -28,6 +29,7 @@ export const ROUTES = {
 // ── Dynamic route builders ─────────────────────────────────────────────────────
 export const toMeeting     = (id: string) => `/meeting/${id}`;
 export const toTeam        = (id: string) => `/teams/${id}`;
+export const toWorkspace   = (id: string) => `/teams/${id}/workspace`;
 export const toChannel     = (teamId: string, channelId: string) => `/teams/${teamId}/channels/${channelId}`;
 export const toResetPassword = (token: string) => `/reset-password/${token}`;
 export const toVerifyEmail   = (token: string) => `/verify-email/${token}`;

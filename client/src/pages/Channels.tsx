@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Hash, Lock, Plus, Send, Users, ChevronLeft, Trash2, Circle, MessageSquare } from 'lucide-react';
+import { Hash, Lock, Plus, Send, Users, ChevronLeft, Trash2, Circle, MessageSquare, LayoutDashboard } from 'lucide-react';
 import { teamService, type Team, type Channel } from '../api/team.api';
 import { channelService } from '../api/channel.api';
 import { useAppSelector } from '../hooks/useAppDispatch';
 import { useSocket, safeEmit } from '../hooks/useSocket';
 import { useChatStore, type ChannelMessage } from '../store/chat/chat.store';
 import { usePresence } from '../hooks/usePresence';
-import { toChannel } from '../constants';
+import { toChannel, toWorkspace } from '../constants';
 import Button from '../components/common/Button';
 import Modal from '../components/common/Modal';
 import Loader from '../components/common/Loader';
@@ -216,6 +216,7 @@ const Channels = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [showTeamChat, setShowTeamChat] = useState(false);
+  const [showWorkspace, setShowWorkspace] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', type: 'public' as 'public' | 'private' | 'announcement' });
 
   // Local state for when loaded via `/channels` (no URL parameters)
@@ -334,7 +335,7 @@ const Channels = () => {
           <button
             onClick={() => setShowTeamChat(true)}
             className={clsx(
-              'flex items-center gap-2 w-full px-3 py-2 rounded-xl text-[13px] transition-all text-left border cursor-pointer mb-2',
+              'flex items-center gap-2 w-full px-3 py-2 rounded-xl text-[13px] transition-all text-left border cursor-pointer mb-1',
               showTeamChat
                 ? 'bg-indigo-50 text-indigo-750 border-indigo-150 font-bold shadow-sm'
                 : 'text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] border-transparent'
@@ -342,6 +343,25 @@ const Channels = () => {
           >
             <MessageSquare size={13} />
             <span className="truncate flex-1">Team Chat</span>
+          </button>
+
+          {/* Workspace tab */}
+          <button
+            onClick={() => {
+              setShowTeamChat(false);
+              if (teamId) {
+                navigate(toWorkspace(teamId));
+              } else if (activeTeamId) {
+                navigate(toWorkspace(activeTeamId));
+              }
+            }}
+            className={clsx(
+              'flex items-center gap-2 w-full px-3 py-2 rounded-xl text-[13px] transition-all text-left border cursor-pointer mb-2',
+              'text-[var(--color-text-secondary)] hover:bg-black/5 hover:text-[var(--color-text)] border-transparent'
+            )}
+          >
+            <LayoutDashboard size={13} />
+            <span className="truncate flex-1">Workspace</span>
           </button>
 
           <div className="flex items-center justify-between px-2.5 py-1.5 mb-1">

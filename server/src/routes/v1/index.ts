@@ -165,10 +165,15 @@ router.post('/ai/:meetingId/extract-tasks',                 aiCtrl.extractAndSav
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
 router.use('/tasks', protect, scopeTenant());
-router.get('/tasks',       taskCtrl.getTasks);
-router.post('/tasks',      taskCtrl.createTask);
-router.put('/tasks/:id',   taskCtrl.updateTask);
-router.delete('/tasks/:id',taskCtrl.deleteTask);
+router.get('/tasks',              taskCtrl.getTasks);
+router.post('/tasks',             taskCtrl.createTask);
+router.put('/tasks/:id',          taskCtrl.updateTask);
+router.delete('/tasks/:id',       taskCtrl.deleteTask);
+router.get('/tasks/:id/history',  taskCtrl.getTaskHistory);
+
+// ── Team Workspace (team-scoped tasks + activity) ─────────────────────────────
+router.get('/teams/:teamId/tasks',          taskCtrl.getTeamTasks);
+router.get('/teams/:teamId/activity',       taskCtrl.getTeamActivity);
 
 // ── Tenants ───────────────────────────────────────────────────────────────────
 router.use('/tenants', protect);

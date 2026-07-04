@@ -68,6 +68,7 @@ export type MeetingStatus = typeof MEETING_STATUS[keyof typeof MEETING_STATUS];
 
 // Task Status
 export const TASK_STATUS = {
+  BACKLOG:     'backlog',
   TODO:        'todo',
   IN_PROGRESS: 'in_progress',
   IN_REVIEW:   'in_review',

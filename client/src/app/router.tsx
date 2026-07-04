@@ -24,6 +24,7 @@ const Tasks          = lazy(() => import('../pages/Tasks'));
 const AISummary      = lazy(() => import('../pages/AISummary'));
 const Teams          = lazy(() => import('../pages/Teams'));
 const Channels       = lazy(() => import('../pages/Channels'));
+const TeamWorkspace  = lazy(() => import('../components/team/TeamWorkspace'));
 const Notifications  = lazy(() => import('../pages/Notifications'));
 const Recordings     = lazy(() => import('../pages/Recordings'));
 const RecordingDetail = lazy(() => import('../pages/RecordingDetail'));
@@ -100,6 +101,7 @@ const AppRoutes = () => {
           <Route path={ROUTES.AI_SUMMARY}    element={<Suspense fallback={<PageFallback />}><AISummary /></Suspense>} />
           <Route path={ROUTES.TEAMS}         element={<Suspense fallback={<PageFallback />}><Teams /></Suspense>} />
           <Route path={ROUTES.TEAM}          element={<Suspense fallback={<PageFallback />}><Channels /></Suspense>} />
+          <Route path={ROUTES.TEAM_WORKSPACE}  element={<Suspense fallback={<PageFallback />}><TeamWorkspace /></Suspense>} />
           <Route path={ROUTES.CHANNELS}      element={<Suspense fallback={<PageFallback />}><Channels /></Suspense>} />
           <Route path={ROUTES.NOTIFICATIONS} element={<Suspense fallback={<PageFallback />}><Notifications /></Suspense>} />
           <Route path={ROUTES.RECORDINGS}    element={<Suspense fallback={<PageFallback />}><Recordings /></Suspense>} />
