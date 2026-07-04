@@ -1,13 +1,6 @@
-import { getClient, withRetry } from './openai';
-import { AI_MODEL } from '../constants';
+import { generate, withRetry, parseJSON } from './gemini';
 
 type SummaryLength = 'short' | 'medium' | 'detailed';
-
-const LENGTH_TOKENS: Record<SummaryLength, number> = {
-  short:    400,
-  medium:   800,
-  detailed: 1400,
-};
 
 const LENGTH_INSTRUCTION: Record<SummaryLength, string> = {
   short:    'Be very concise — 3-5 bullet points per section maximum.',
@@ -16,22 +9,23 @@ const LENGTH_INSTRUCTION: Record<SummaryLength, string> = {
 };
 
 export const summarize = async (transcript: string, length: SummaryLength = 'medium'): Promise<string> => {
-  const client = getClient();
-  return withRetry(async () => {
-    const res = await client.chat.completions.create({
-      model: AI_MODEL.GPT4O,
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert meeting analyst. Produce a structured meeting summary in markdown.\n${LENGTH_INSTRUCTION[length]}\n\nUse exactly these sections:\n## Executive Summary\n## Key Highlights\n## Discussion Points\n## Important Decisions\n## Meeting Outcome\n\nBe factual, professional, and accurate. Do not invent information not present in the transcript.`,
-        },
-        { role: 'user', content: `Meeting transcript:\n\n${transcript.slice(0, 40000)}` },
-      ],
-      max_tokens:  LENGTH_TOKENS[length],
-      temperature: 0.3,
-    });
-    return res.choices[0].message.content!.trim();
-  });
+  const prompt = `You are an expert meeting analyst. Produce a structured meeting summary in markdown.
+${LENGTH_INSTRUCTION[length]}
+
+Use exactly these sections:
+## Executive Summary
+## Key Highlights
+## Discussion Points
+## Important Decisions
+## Meeting Outcome
+
+Be factual, professional, and accurate. Do not invent information not present in the transcript.
+
+Meeting transcript:
+
+${transcript.slice(0, 40000)}`;
+
+  return withRetry(() => generate(prompt));
 };
 
 export const extractFollowUpSuggestions = async (transcript: string): Promise<{
@@ -39,24 +33,18 @@ export const extractFollowUpSuggestions = async (transcript: string): Promise<{
   priority: 'high' | 'medium' | 'low';
   owner: string | null;
 }[]> => {
-  const client = getClient();
+  const prompt = `Extract follow-up suggestions from this meeting transcript.
+Return ONLY valid JSON (no markdown fences): { "suggestions": [{ "text": string, "priority": "high"|"medium"|"low", "owner": string|null }] }
+Limit to the 10 most important. Return empty array if none found.
+
+Transcript:
+
+${transcript.slice(0, 20000)}`;
+
   return withRetry(async () => {
-    const res = await client.chat.completions.create({
-      model: AI_MODEL.GPT4O,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: `Extract follow-up suggestions from this meeting transcript.\nReturn JSON: { "suggestions": [{ "text": string, "priority": "high"|"medium"|"low", "owner": string|null }] }\nLimit to the 10 most important. Return empty array if none found.`,
-        },
-        { role: 'user', content: `Transcript:\n\n${transcript.slice(0, 20000)}` },
-      ],
-      max_tokens:  500,
-      temperature: 0.2,
-    });
-    const raw = res.choices[0].message.content!;
+    const raw = await generate(prompt);
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = parseJSON<{ suggestions: any[] }>(raw);
       return (parsed.suggestions || []).map((s: any) => ({
         text:     String(s.text || '').slice(0, 300),
         priority: ['high', 'medium', 'low'].includes(s.priority) ? s.priority : 'medium',
@@ -75,24 +63,25 @@ export const extractKeywords = async (transcript: string): Promise<{
   technologies: string[];
   frequentTerms: string[];
 }> => {
-  const client = getClient();
+  const prompt = `Extract structured keyword metadata from this meeting transcript.
+Return ONLY valid JSON (no markdown fences):
+{
+  "topics": string[],
+  "people": string[],
+  "projects": string[],
+  "technologies": string[],
+  "frequentTerms": string[]
+}
+Keep each array to the most relevant 5-10 items. Return empty arrays if nothing found.
+
+Transcript:
+
+${transcript.slice(0, 20000)}`;
+
   return withRetry(async () => {
-    const res = await client.chat.completions.create({
-      model: AI_MODEL.GPT4O,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: `Extract structured keyword metadata from meeting transcripts.\nReturn JSON: {\n  "topics": string[],\n  "people": string[],\n  "projects": string[],\n  "technologies": string[],\n  "frequentTerms": string[]\n}\nKeep each array to the most relevant 5-10 items. Return empty arrays if nothing found.`,
-        },
-        { role: 'user', content: `Transcript:\n\n${transcript.slice(0, 20000)}` },
-      ],
-      max_tokens:  400,
-      temperature: 0.2,
-    });
-    const raw = res.choices[0].message.content!;
+    const raw = await generate(prompt);
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = parseJSON<any>(raw);
       return {
         topics:        parsed.topics        || [],
         people:        parsed.people        || [],

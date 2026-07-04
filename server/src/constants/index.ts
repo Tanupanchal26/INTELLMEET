@@ -124,9 +124,12 @@ export const CACHE_TTL = {
 
 // AI Models
 export const AI_MODEL = {
-  GPT4O:      'gpt-4o-mini',
-  GPT4_TURBO: 'gpt-4o-mini',
-  WHISPER:    'whisper-1',
+  GEMINI_FLASH:   'gemini-2.0-flash',
+  GEMINI_PRO:     'gemini-2.0-flash',   // alias kept for any future upgrade path
+  WHISPER:        'whisper-1',          // kept for reference — not actively used
+  // Legacy aliases so any remaining references don't break at runtime
+  GPT4O:          'gemini-2.0-flash',
+  GPT4_TURBO:     'gemini-2.0-flash',
 } as const;
 
 export type AiModel = typeof AI_MODEL[keyof typeof AI_MODEL];

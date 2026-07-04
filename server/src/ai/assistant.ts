@@ -1,6 +1,5 @@
 // @ts-nocheck
-const { getClient, withRetry } = require('./openai');
-const { AI_MODEL } = require('../constants');
+const { generate, withRetry, parseJSON } = require('./gemini');
 
 const SYSTEM_PROMPT = `You are IntellMeet AI Assistant, an intelligent meeting co-pilot. You can:
 - Summarize meetings or specific sections
@@ -25,7 +24,6 @@ exports.chat = async (userMessage: string, context: {
   history?:       { role: string; content: string }[];
   meetingTitles?: string[];
 } = {}): Promise<string> => {
-  const client = getClient();
   const safeMessage = sanitizeUserMessage(userMessage);
 
   const contextBlock = [
@@ -36,21 +34,21 @@ exports.chat = async (userMessage: string, context: {
       : '',
   ].filter(Boolean).join('\n\n');
 
-  const messages = [
-    { role: 'system', content: SYSTEM_PROMPT + (contextBlock ? `\n\nCONTEXT:\n${contextBlock}` : '') },
-    ...(context.history || []).slice(-8),
-    { role: 'user', content: safeMessage },
-  ];
+  // Build a single prompt string — Gemini uses a single `contents` string
+  const historyBlock = (context.history || [])
+    .slice(-8)
+    .map((m: any) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+    .join('\n');
 
-  return withRetry(async () => {
-    const res = await client.chat.completions.create({
-      model:       AI_MODEL.GPT4O,
-      messages,
-      max_tokens:  700,
-      temperature: 0.4,
-    });
-    return res.choices[0].message.content.trim();
-  });
+  const prompt = [
+    SYSTEM_PROMPT,
+    contextBlock ? `\nCONTEXT:\n${contextBlock}` : '',
+    historyBlock ? `\nCONVERSATION HISTORY:\n${historyBlock}` : '',
+    `\nUser: ${safeMessage}`,
+    'Assistant:',
+  ].filter(Boolean).join('\n');
+
+  return withRetry(() => generate(prompt));
 };
 
 /**
@@ -62,18 +60,11 @@ exports.generateTasks = async (prompt: string, transcript = ''): Promise<Array<{
   priority:       'high' | 'medium' | 'low';
   estimatedHours: number | null;
 }>> => {
-  const client = getClient();
   const safePrompt = sanitizeUserMessage(prompt);
 
-  return withRetry(async () => {
-    const res = await client.chat.completions.create({
-      model: AI_MODEL.GPT4O,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: `Generate project tasks from the given input.
-Return JSON: {
+  const fullPrompt = `Generate project tasks from the given input.
+Return ONLY valid JSON (no markdown fences):
+{
   "tasks": [
     {
       "title":          string,
@@ -83,19 +74,14 @@ Return JSON: {
     }
   ]
 }
-Only generate tasks directly related to the input. Return empty array if nothing actionable.`,
-        },
-        {
-          role: 'user',
-          content: `Request: ${safePrompt}${transcript ? `\n\nTranscript context:\n${transcript.slice(0, 3000)}` : ''}`,
-        },
-      ],
-      max_tokens:  600,
-      temperature: 0.3,
-    });
-    const raw = res.choices[0].message.content;
+Only generate tasks directly related to the input. Return empty array if nothing actionable.
+
+Request: ${safePrompt}${transcript ? `\n\nTranscript context:\n${transcript.slice(0, 3000)}` : ''}`;
+
+  return withRetry(async () => {
+    const raw = await generate(fullPrompt);
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = parseJSON(raw);
       return (parsed.tasks || []).map((t: any) => ({
         title:          String(t.title       || '').slice(0, 200),
         description:    String(t.description || '').slice(0, 500),

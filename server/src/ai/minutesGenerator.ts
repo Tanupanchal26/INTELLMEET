@@ -1,6 +1,5 @@
 // @ts-nocheck
-const { getClient, withRetry } = require('./openai');
-const { AI_MODEL } = require('../constants');
+const { generate, withRetry, parseJSON } = require('./gemini');
 
 /**
  * Generate formal meeting minutes in markdown.
@@ -11,16 +10,9 @@ exports.generateMinutes = async ({ transcript, title, participants = [], date }:
   participants: string[];
   date:         string;
 }): Promise<string> => {
-  const client = getClient();
   const context = `Meeting: "${title}"\nDate: ${date}\nParticipants: ${participants.join(', ') || 'Unknown'}`;
 
-  return withRetry(async () => {
-    const res = await client.chat.completions.create({
-      model: AI_MODEL.GPT4O,
-      messages: [
-        {
-          role: 'system',
-          content: `You are a professional meeting secretary. Generate formal meeting minutes in markdown.
+  const prompt = `You are a professional meeting secretary. Generate formal meeting minutes in markdown.
 
 Use exactly these sections:
 # Meeting Minutes
@@ -35,15 +27,14 @@ Use exactly these sections:
 ## Follow-up Items
 ## Next Steps
 
-Be concise, professional, and accurate. Only include information from the transcript.`,
-        },
-        { role: 'user', content: `${context}\n\nTranscript:\n${transcript.slice(0, 40000)}` },
-      ],
-      max_tokens:  1400,
-      temperature: 0.2,
-    });
-    return res.choices[0].message.content.trim();
-  });
+Be concise, professional, and accurate. Only include information from the transcript.
+
+${context}
+
+Transcript:
+${transcript.slice(0, 40000)}`;
+
+  return withRetry(() => generate(prompt));
 };
 
 /**
@@ -61,16 +52,9 @@ exports.generateSmartNotes = async ({ transcript, title, agenda = [] }: {
   agendaCompletion: number;
   notesMarkdown:    string;
 }> => {
-  const client = getClient();
-  return withRetry(async () => {
-    const res = await client.chat.completions.create({
-      model: AI_MODEL.GPT4O,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: `Analyze the meeting transcript and generate smart notes.
-Return JSON: {
+  const prompt = `Analyze the meeting transcript and generate smart notes.
+Return ONLY valid JSON (no markdown fences):
+{
   "topicsCovered":    string[],
   "followUpItems":    string[],
   "questionsAsked":   string[],
@@ -78,19 +62,18 @@ Return JSON: {
   "agendaCompletion": number (0-100, percentage of agenda items covered),
   "notesMarkdown":    string (organized markdown notes)
 }
-Keep arrays to the most relevant 10 items each. Be concise and factual.`,
-        },
-        {
-          role: 'user',
-          content: `Meeting: "${title}"\nAgenda: ${agenda.join(', ') || 'Not specified'}\n\nTranscript:\n${transcript.slice(0, 30000)}`,
-        },
-      ],
-      max_tokens:  1000,
-      temperature: 0.3,
-    });
-    const raw = res.choices[0].message.content;
+Keep arrays to the most relevant 10 items each. Be concise and factual.
+
+Meeting: "${title}"
+Agenda: ${agenda.join(', ') || 'Not specified'}
+
+Transcript:
+${transcript.slice(0, 30000)}`;
+
+  return withRetry(async () => {
+    const raw = await generate(prompt);
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = parseJSON(raw);
       return {
         topicsCovered:    Array.isArray(parsed.topicsCovered)  ? parsed.topicsCovered  : [],
         followUpItems:    Array.isArray(parsed.followUpItems)  ? parsed.followUpItems  : [],
