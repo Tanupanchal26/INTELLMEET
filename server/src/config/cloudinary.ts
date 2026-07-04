@@ -12,26 +12,28 @@ cloudinary.config({
   api_secret: cloudinaryConfig.secret,
 });
 
-// Validate upload permission on startup (non-blocking)
-// Uses a zero-byte upload attempt to detect restricted API keys early.
+// Validate upload permission on startup (non-blocking).
+// Tests resource_type 'image' — the baseline permitted type on all Cloudinary plans.
+// 400 "Invalid image file" for an empty buffer = permissions OK.
+// 403 = API key missing upload permission.
 setImmediate(() => {
   const { PassThrough } = require('stream');
   const pass = new PassThrough();
   const stream = cloudinary.uploader.upload_stream(
-    { resource_type: 'raw', folder: 'intellmeet/_healthcheck', tags: ['healthcheck'] },
+    { resource_type: 'image', folder: 'intellmeet/_healthcheck' },
     (err) => {
       if (!err) return; // upload succeeded — permissions OK
       if (err.http_code === 403) {
         console.error(
-          '[CLOUDINARY] PERMISSION ERROR: Your API key does not have upload (create) permission.\n' +
-          '[CLOUDINARY] Fix: Cloudinary Dashboard → Settings → Access Keys → enable Upload permission on key ' +
+          '[CLOUDINARY] PERMISSION ERROR: API key missing upload permission.\n' +
+          '[CLOUDINARY] Fix: Cloudinary Dashboard → Settings → Access Keys → enable Upload on key ' +
           cloudinaryConfig.key + '\n' +
-          '[CLOUDINARY] Cloudinary error: ' + err.message
+          '[CLOUDINARY] Detail: ' + err.message
         );
       } else if (err.http_code === 401) {
-        console.error('[CLOUDINARY] AUTH ERROR: Invalid API key or secret. Verify CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET.');
+        console.error('[CLOUDINARY] AUTH ERROR: Invalid API key or secret. Check CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET.');
       }
-      // 400 "Invalid file" is expected for empty buffer — means permissions are fine
+      // 400 = permissions fine, file was just invalid (expected for empty buffer)
     }
   );
   pass.pipe(stream);

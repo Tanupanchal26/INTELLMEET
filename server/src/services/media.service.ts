@@ -5,23 +5,20 @@ const ApiError = require('../utils/ApiError');
 const logger = require('../shared/utils/logger').default;
 
 // Allowed MIME types
-const ALLOWED_TYPES = {
+// NOTE: resource_type 'raw' and 'auto' return 403 on this Cloudinary plan.
+// Only 'image' and 'video' resource types are permitted.
+const ALLOWED_TYPES: Record<string, 'image' | 'video'> = {
   // Images
-  'image/jpeg': 'image',
-  'image/jpg': 'image',
-  'image/png': 'image',
-  'image/gif': 'image',
-  'image/webp': 'image',
+  'image/jpeg':  'image',
+  'image/jpg':   'image',
+  'image/png':   'image',
+  'image/gif':   'image',
+  'image/webp':  'image',
   // Videos
-  'video/mp4': 'video',
-  'video/mpeg': 'video',
-  'video/webm': 'video',
+  'video/mp4':       'video',
+  'video/mpeg':      'video',
+  'video/webm':      'video',
   'video/quicktime': 'video',
-  // Documents / Raw
-  'application/pdf': 'raw',
-  'application/msword': 'raw',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'raw',
-  'text/plain': 'raw',
 };
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
