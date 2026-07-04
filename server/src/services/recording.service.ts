@@ -13,7 +13,7 @@ exports.uploadRecording = async (meetingId, tenantId, ownerId, buffer, sizeBytes
     const stream = cloudinary.uploader.upload_stream(
       { resource_type: 'video', folder: `intellmeet/recordings/${tenantId}` },
       async (error, result) => {
-        if (error) return reject(ApiError.internal('Cloudinary upload failed'));
+        if (error) return reject(ApiError.internal(`Cloudinary upload failed: [${error.http_code}] ${error.message}`));
 
         try {
           const recording = await Recording.create({
