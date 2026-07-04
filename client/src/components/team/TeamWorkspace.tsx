@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, X, Sparkles, ChevronDown, ChevronUp, Calendar, Flag, User } from 'lucide-react';
+import { Plus, X, Sparkles, ChevronDown, ChevronUp, Calendar, Flag, User, Trash2 } from 'lucide-react';
 import { taskService, type Task } from '../../api/task.api';
 import { teamService } from '../../api/team.api';
 import { aiService } from '../../api/ai.api';
@@ -240,12 +240,51 @@ const AIImportPanel = ({
   );
 };
 
+/* ── Delete Confirm Modal ───────────────────────────────────────────────────── */
+const DeleteConfirmModal = ({
+  task,
+  onConfirm,
+  onCancel,
+}: {
+  task: Task;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 w-80 shadow-2xl flex flex-col gap-4">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+          <Trash2 size={16} className="text-red-600" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-[var(--color-text)]">Delete Task</p>
+          <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">This action cannot be undone.</p>
+        </div>
+      </div>
+      <p className="text-xs text-[var(--color-text-secondary)] bg-[var(--color-bg-secondary)] rounded-lg px-3 py-2 line-clamp-2">
+        &ldquo;{task.title}&rdquo;
+      </p>
+      <div className="flex gap-2">
+        <button onClick={onCancel}
+          className="flex-1 text-xs border border-[var(--color-border)] rounded-lg py-2 text-[var(--color-text-secondary)] hover:bg-black/5 transition-colors cursor-pointer font-semibold">
+          Cancel
+        </button>
+        <button onClick={onConfirm}
+          className="flex-1 text-xs bg-red-600 text-white rounded-lg py-2 font-semibold hover:bg-red-700 transition-colors cursor-pointer">
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 /* ── TeamWorkspace ──────────────────────────────────────────────────────────── */
 const TeamWorkspace = () => {
   const { id: teamId } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const user = useAppSelector(s => s.auth.user);
   const [addingIn, setAddingIn] = useState<Status | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Task | null>(null);
 
   const { data: team } = useQuery({
     queryKey: ['team', teamId],
@@ -292,8 +331,18 @@ const TeamWorkspace = () => {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => taskService.deleteTeamTask(id),
-    onSuccess: invalidate,
-    onError: () => toast.error('Failed to delete task'),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['team-tasks', teamId] });
+      const prev = qc.getQueryData<Task[]>(['team-tasks', teamId]);
+      qc.setQueryData<Task[]>(['team-tasks', teamId], (old = []) => old.filter(t => t._id !== id));
+      return { prev };
+    },
+    onError: (_err, _id, ctx: any) => {
+      if (ctx?.prev) qc.setQueryData(['team-tasks', teamId], ctx.prev);
+      toast.error('Failed to delete task');
+    },
+    onSuccess: () => toast.success('Task deleted'),
+    onSettled: invalidate,
   });
 
   const handleImportAI = (newTasks: Partial<Task>[]) => {
@@ -333,7 +382,10 @@ const TeamWorkspace = () => {
                     task={task}
                     members={members}
                     onUpdate={(id, data) => updateMutation.mutate({ id, data })}
-                    onDelete={id => deleteMutation.mutate(id)}
+                    onDelete={id => {
+                      const t = (qc.getQueryData<Task[]>(['team-tasks', teamId]) ?? tasks).find(t => t._id === id);
+                      if (t) setConfirmDelete(t);
+                    }}
                   />
                 ))}
 
@@ -357,6 +409,13 @@ const TeamWorkspace = () => {
           );
         })}
       </div>
+      {confirmDelete && (
+        <DeleteConfirmModal
+          task={confirmDelete}
+          onConfirm={() => { deleteMutation.mutate(confirmDelete._id); setConfirmDelete(null); }}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   );
 };

@@ -116,7 +116,16 @@ exports.updateTask = asyncHandler(async (req: Request, res: Response) => {
 exports.deleteTask = asyncHandler(async (req: Request, res: Response) => {
   const task = await Task.findOne({ _id: req.params.id, tenantId: req.tenantId });
   if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
-  if (!isAdminOrOwner(task, req)) throw ApiError.forbidden('Not authorised to delete this task');
+
+  // Allow: admin, task creator, or any member of the task's team
+  const isAdmin   = ['admin', 'super_admin'].includes(String(req.user?.role ?? ''));
+  const isCreator = String(task.createdBy) === String(req.user?._id ?? '');
+  let   isTeamMember = false;
+  if (task.teamId) {
+    const team = await Team.findOne({ _id: task.teamId, tenantId: req.tenantId }).select('members');
+    isTeamMember = team?.members.some((m: any) => String(m.user) === String(req.user?._id)) ?? false;
+  }
+  if (!isAdmin && !isCreator && !isTeamMember) throw ApiError.forbidden('Not authorised to delete this task');
 
   await task.deleteOne();
   await logActivity(task._id, task.teamId, req.tenantId as string, req.user?._id as string, 'deleted', { title: task.title });
