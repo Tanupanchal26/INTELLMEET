@@ -184,8 +184,8 @@ router.patch('/tenants/me/settings', authorize(ROLES.ADMIN, ROLES.SUPER_ADMIN), 
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
 router.use('/analytics', protect, scopeTenant());
-router.get('/analytics/dashboard',             analyticsCtrl.getDashboard);
-router.get('/analytics', authorize(ROLES.ADMIN), analyticsCtrl.getAnalyticsData);
+router.get('/analytics/dashboard', analyticsCtrl.getDashboard);
+router.get('/analytics',           analyticsCtrl.getAnalyticsData);
 
 // ── Export ────────────────────────────────────────────────────────────────────
 router.use('/export', authenticate, scopeTenant('tenantId'));

@@ -407,5 +407,5 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     iceCandidateQueue.current.clear();
   }, []);
 
-  return { localStreamRef, localStream, remoteStreams, peersRef, startScreenShare, stopScreenShare, stopAllTracks };
+  return { localStreamRef, localStream, remoteStreams, peersRef, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks };
 };

@@ -31,16 +31,10 @@ exports.getDashboardMetrics = async (tenantId, userId) => {
       .populate('host', 'name avatar')
       .populate('participants', 'name avatar')
       .sort({ scheduledAt: 1 }).limit(4).lean(),
-    Meeting.aggregate([
-      { $match: { tenantId: tid, $or: [{ host: uid }, { participants: uid }] } },
-      {
-        $group: {
-          _id: null,
-          meetingsCreated: { $sum: { $cond: [{ $eq: ['$host', uid] }, 1, 0] } },
-          meetingsJoined:  { $sum: { $cond: [{ $and: [{ $ne: ['$host', uid] }, { $in: [uid, '$participants'] }] }, 1, 0] } },
-          totalMeetings:   { $sum: 1 },
-        },
-      },
+    Promise.all([
+      Meeting.countDocuments({ tenantId: tid, host: uid }),
+      Meeting.countDocuments({ tenantId: tid, participants: uid, host: { $ne: uid } }),
+      Meeting.countDocuments({ tenantId: tid, $or: [{ host: uid }, { participants: uid }] }),
     ]),
     Meeting.aggregate([
       { $match: { tenantId: tid, participants: uid, status: 'ended', duration: { $gt: 0 } } },
@@ -68,7 +62,7 @@ exports.getDashboardMetrics = async (tenantId, userId) => {
     Notification.find({ recipient: uid }).sort({ createdAt: -1 }).limit(5).lean(),
   ]);
 
-  const stats = meetingStats[0] || { meetingsCreated: 0, meetingsJoined: 0, totalMeetings: 0 };
+  const [meetingsCreated, meetingsJoined, totalMeetings] = meetingStats;
   const doneTasks = taskData.find(t => t._id === 'done')?.count || 0;
   const totalTasks = taskData.reduce((acc, curr) => acc + curr.count, 0);
   const totalMeetingHours = Math.round((meetingHoursAgg[0]?.totalMinutes || 0) / 60);
@@ -79,9 +73,9 @@ exports.getDashboardMetrics = async (tenantId, userId) => {
 
   return {
     metrics: {
-      meetingsCreated:     stats.meetingsCreated,
-      meetingsJoined:      stats.meetingsJoined,
-      totalMeetings:       stats.totalMeetings,
+      meetingsCreated,
+      meetingsJoined,
+      totalMeetings,
       totalMeetingHours,
       aiSummariesGenerated,
       tasksCompleted:      doneTasks,

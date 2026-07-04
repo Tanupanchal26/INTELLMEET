@@ -46,12 +46,13 @@ const REACTIONS = ['👍', '❤️', '😂', '🎉', '👏', '🔥'];
 
 interface ControlsProps {
   localStream?: MediaStream | null;
+  screenStreamRef?: React.RefObject<MediaStream | null>;
   startScreenShare?: () => Promise<void>;
   stopScreenShare?: () => void;
   stopAllTracks?: () => void;
 }
 
-const Controls = ({ localStream, startScreenShare, stopScreenShare, stopAllTracks }: ControlsProps) => {
+const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks }: ControlsProps) => {
   const { id: meetingId } = useParams();
   const user = useAppSelector((s) => s.auth.user);
   const {
@@ -61,7 +62,7 @@ const Controls = ({ localStream, startScreenShare, stopScreenShare, stopAllTrack
   } = useMeetingStore();
   const isHost = currentMeeting?.host === user?.id || currentMeeting?.host?._id === user?.id;
   const { leaveMeeting, endMeeting } = useMeeting(currentMeeting?.roomId);
-  const { startRecording, stopRecording } = useRecording(meetingId ?? '', localStream ?? null);
+  const { startRecording, stopRecording } = useRecording(meetingId ?? '', localStream ?? null, screenStreamRef);
   const [handRaised, setHandRaised]   = useState(false);
   const [showReactions, setShowReactions] = useState(false);
 
