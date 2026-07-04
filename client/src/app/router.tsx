@@ -27,8 +27,9 @@ const Channels       = lazy(() => import('../pages/Channels'));
 const Notifications  = lazy(() => import('../pages/Notifications'));
 const Recordings     = lazy(() => import('../pages/Recordings'));
 const RecordingDetail = lazy(() => import('../pages/RecordingDetail'));
-const MediaLibrary   = lazy(() => import('../pages/MediaLibrary'));
-const NotFound       = lazy(() => import('../pages/NotFound'));
+const MediaLibrary        = lazy(() => import('../pages/MediaLibrary'));
+const PostMeetingDashboard = lazy(() => import('../pages/PostMeetingDashboard'));
+const NotFound             = lazy(() => import('../pages/NotFound'));
 const GoogleAuthSuccess = lazy(() => import('../pages/GoogleAuthSuccess'));
 
 // ── Prefetch heavy routes after first paint ───────────────────────────────────
@@ -104,6 +105,7 @@ const AppRoutes = () => {
           <Route path={ROUTES.RECORDINGS}    element={<Suspense fallback={<PageFallback />}><Recordings /></Suspense>} />
           <Route path={ROUTES.RECORDING_DETAIL} element={<Suspense fallback={<PageFallback />}><RecordingDetail /></Suspense>} />
           <Route path={ROUTES.MEDIA}         element={<Suspense fallback={<PageFallback />}><MediaLibrary /></Suspense>} />
+          <Route path={ROUTES.POST_MEETING}  element={<Suspense fallback={<PageFallback />}><PostMeetingDashboard /></Suspense>} />
         </Route>
 
         {/* MeetingRoom — full-screen, outside AppLayout, isolated chunk */}

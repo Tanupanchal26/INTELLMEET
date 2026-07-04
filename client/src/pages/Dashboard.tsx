@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Video, CheckSquare, Users, Calendar, BarChart2,
-  Sparkles, Bell, Clock, ArrowRight, Zap, Brain, Film
+  Sparkles, Bell, Clock, ArrowRight, Zap, Brain, Film, ClipboardList
 } from 'lucide-react';
 import { recordingService } from '../api/recording.api';
 import { useAppSelector } from '../hooks/useAppDispatch';
@@ -69,6 +69,7 @@ const QUICK = [
   { label: 'AI Summary', icon: Brain, to: ROUTES.AI_SUMMARY, color: 'text-purple-600 dark:text-purple-400', hoverClass: 'hover-purple', bg: 'bg-purple-50/40 dark:bg-purple-950/20', border: 'border-purple-100/50 dark:border-purple-900/10' },
   { label: 'Analytics', icon: BarChart2, to: ROUTES.ANALYTICS, color: 'text-amber-600 dark:text-amber-400', hoverClass: 'hover-amber', bg: 'bg-amber-50/40 dark:bg-amber-950/20', border: 'border-amber-100/50 dark:border-amber-900/10' },
   { label: 'Recordings', icon: Film, to: ROUTES.RECORDINGS, color: 'text-rose-600 dark:text-rose-400', hoverClass: 'hover-rose', bg: 'bg-rose-50/40 dark:bg-rose-950/20', border: 'border-rose-100/50 dark:border-rose-900/10' },
+  { label: 'Past Meetings', icon: ClipboardList, to: ROUTES.POST_MEETING, color: 'text-teal-600 dark:text-teal-400', hoverClass: 'hover-teal', bg: 'bg-teal-50/40 dark:bg-teal-950/20', border: 'border-teal-100/50 dark:border-teal-900/10' },
 ];
 
 export default function Dashboard() {

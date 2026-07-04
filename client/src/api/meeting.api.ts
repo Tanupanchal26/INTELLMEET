@@ -40,4 +40,6 @@ export const meetingService = {
   getNotes:      (id: string) => api.get(`/meetings/${id}/notes`),
   saveNotes:     (id: string, data: object) => api.put(`/meetings/${id}/notes`, data),
   join:          (code: string) => api.post('/meetings/join', { code, meetingId: code }),
+  getCompleted:  (params?: { page?: number; limit?: number; search?: string; sortBy?: string; order?: string }) =>
+    api.get('/meetings/completed', { params }),
 };

@@ -123,6 +123,16 @@ exports.upsertMeetingNote = asyncHandler(async (req: Request, res: Response) => 
   ApiResponse.ok(res, note, 'Notes saved');
 });
 
+// ── Completed Meetings Dashboard ─────────────────────────────────────────────
+exports.listCompletedMeetings = asyncHandler(async (req: Request, res: Response) => {
+  const result = await meetingService.listCompletedMeetings(
+    req.tenantId,
+    req.user?._id,
+    req.query as any
+  );
+  ApiResponse.paginated(res, result.data, result);
+});
+
 // ── Join by meetingId or joinCode ─────────────────────────────────────────────
 exports.joinMeeting = asyncHandler(async (req: Request, res: Response) => {
   const { code, roomId, meetingId } = req.body as { code?: string; roomId?: string; meetingId?: string };

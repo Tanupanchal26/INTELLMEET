@@ -68,6 +68,7 @@ router.post('/users/avatar', protect, upload.single('avatar'),            userCt
 
 // ── Meetings ──────────────────────────────────────────────────────────────────
 router.use('/meetings', protect, scopeTenant());
+router.get('/meetings/completed',  meetingCtrl.listCompletedMeetings);
 router.post('/meetings',         validate(MV.createMeeting),      meetingCtrl.createMeeting);
 router.get('/meetings',          validate(MV.listMeetings),        meetingCtrl.listMeetings);
 router.post('/meetings/join',                                       meetingCtrl.joinMeeting);

@@ -399,6 +399,98 @@ export const joinByRoomId = async (
   };
 };
 
+// ── Completed Meetings Dashboard ─────────────────────────────────────────────
+export const listCompletedMeetings = async (
+  tenantId: TenantId,
+  userId:   UserId,
+  {
+    page   = 1,
+    limit  = 10,
+    search = '',
+    sortBy = 'endedAt',
+    order  = 'desc',
+  }: { page?: number | string; limit?: number | string; search?: string; sortBy?: string; order?: string } = {}
+) => {
+  const Meeting   = require('../models/Meeting');
+  const AIResult  = require('../models/AIResult');
+  const Recording = require('../models/Recording');
+
+  const p = Math.max(1, parseInt(String(page), 10) || 1);
+  const l = Math.min(parseInt(String(limit), 10) || 10, 50);
+  const skip = (p - 1) * l;
+
+  const allowedSort: Record<string, string> = {
+    endedAt: 'endedAt', startedAt: 'startedAt', title: 'title', duration: 'duration',
+  };
+  const sortField = allowedSort[sortBy as string] ?? 'endedAt';
+  const sortDir   = order === 'asc' ? 1 : -1;
+
+  const matchStage: Record<string, unknown> = {
+    status: 'ended',
+    $or: [{ host: new (require('mongoose').Types.ObjectId)(userId.toString()) }, { participants: new (require('mongoose').Types.ObjectId)(userId.toString()) }],
+  };
+  if (tenantId) matchStage.tenantId = new (require('mongoose').Types.ObjectId)(tenantId.toString());
+  if (search) {
+    const esc = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    matchStage.title = { $regex: esc, $options: 'i' };
+  }
+
+  const pipeline: object[] = [
+    { $match: matchStage },
+    { $sort: { [sortField]: sortDir } },
+    {
+      $lookup: {
+        from: 'users', localField: 'participants', foreignField: '_id',
+        pipeline: [{ $project: { name: 1, avatar: 1, email: 1 } }],
+        as: 'participants',
+      },
+    },
+    {
+      $lookup: {
+        from: 'users', localField: 'host', foreignField: '_id',
+        pipeline: [{ $project: { name: 1, avatar: 1 } }],
+        as: '_hostArr',
+      },
+    },
+    { $addFields: { host: { $arrayElemAt: ['$_hostArr', 0] } } },
+    {
+      $lookup: {
+        from: 'airesults', localField: '_id', foreignField: 'meeting',
+        pipeline: [{ $project: { summary: 1, actionItems: 1, decisions: 1, transcript: 1, processingStatus: 1 } }],
+        as: '_ai',
+      },
+    },
+    { $addFields: { ai: { $arrayElemAt: ['$_ai', 0] } } },
+    {
+      $lookup: {
+        from: 'recordings', localField: '_id', foreignField: 'meetingId',
+        pipeline: [{ $project: { url: 1, duration: 1, sizeBytes: 1 } }],
+        as: '_rec',
+      },
+    },
+    { $addFields: { recording: { $arrayElemAt: ['$_rec', 0] } } },
+    { $project: { _hostArr: 0, _ai: 0, _rec: 0, 'settings.password': 0 } },
+    {
+      $facet: {
+        data:  [{ $skip: skip }, { $limit: l }],
+        total: [{ $count: 'n' }],
+      },
+    },
+  ];
+
+  const [result] = await Meeting.aggregate(pipeline);
+  const total = result?.total?.[0]?.n ?? 0;
+  return {
+    data:       result?.data ?? [],
+    total,
+    page:       p,
+    limit:      l,
+    totalPages: Math.ceil(total / l),
+    hasNext:    p * l < total,
+    hasPrev:    p > 1,
+  };
+};
+
 module.exports = {
   createMeeting,
   listMeetings,
@@ -412,6 +504,7 @@ module.exports = {
   getMeetingNote,
   upsertMeetingNote,
   joinByRoomId,
+  listCompletedMeetings,
 };
 
 export default module.exports;

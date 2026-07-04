@@ -21,6 +21,7 @@ export const ROUTES = {
   RECORDINGS:      '/recordings',
   RECORDING_DETAIL:'/recordings/:id',
   MEDIA:           '/media',
+  POST_MEETING:    '/post-meeting',
   NOT_FOUND:       '*',
 } as const;
 
