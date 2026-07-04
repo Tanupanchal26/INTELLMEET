@@ -84,7 +84,7 @@ export default function Dashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => analyticsService.getDashboard().then((res: any) => res?.data ?? res),
-    staleTime: 5 * 60_000,
+    staleTime: 0,          // always re-fetch on mount so join counts are fresh
     gcTime: 30 * 60_000,
   });
 

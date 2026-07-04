@@ -58,11 +58,7 @@ exports.getDashboardMetrics = async (tenantId, userId) => {
           ],
           // Meetings this user joined as a NON-HOST participant
           joined: [
-            { $match: { host: { $ne: uid }, 'participantHistory.user': uid } },
-            { $count: 'n' },
-          ],
-          // Total meetings = created + joined (host OR participant)
-          total: [
+            { $match: { host: { $ne: uid }, participants: uid } },
             { $count: 'n' },
           ],
           // Sum of duration (minutes) for ended meetings
@@ -145,7 +141,7 @@ exports.getDashboardMetrics = async (tenantId, userId) => {
   const agg            = meetingAgg[0] ?? {};
   const meetingsCreated  = agg.created?.[0]?.n        ?? 0;
   const meetingsJoined   = agg.joined?.[0]?.n         ?? 0;
-  const totalMeetings    = agg.total?.[0]?.n           ?? 0;
+  const totalMeetings    = meetingsCreated + meetingsJoined;
   const totalMinutes        = agg.hours?.[0]?.totalMinutes ?? 0;
   const totalMeetingHours   = Math.floor(totalMinutes / 60);
   const totalMeetingMinutes = totalMinutes; // raw total minutes (e.g. 155)
