@@ -21,25 +21,35 @@ export interface IMeetingSettings {
   password?:        string;
 }
 
+export interface IParticipantHistory {
+  user:      Types.ObjectId;
+  name:      string;
+  joinedAt:  Date;
+  leftAt?:   Date;
+  duration:  number; // seconds
+}
+
 export interface IMeeting extends Document {
-  tenantId:     Types.ObjectId | null;
-  team:         Types.ObjectId | null;
-  title:        string;
-  description:  string;
-  host:         Types.ObjectId;
-  participants: Types.ObjectId[];
-  invitees:     IInvitee[];
-  meetingId:    string;
-  joinCode:     string;
-  roomId:       string;
-  status:       string;
-  scheduledAt:  Date | null;
-  startedAt:    Date | null;
-  endedAt:      Date | null;
-  duration:     number;
-  maxDuration:  number;
-  agenda:       IAgendaItem[];
-  isRecurring:  boolean;
+  tenantId:           Types.ObjectId | null;
+  team:               Types.ObjectId | null;
+  title:              string;
+  description:        string;
+  host:               Types.ObjectId;
+  participants:       Types.ObjectId[];
+  participantHistory: IParticipantHistory[];
+  invitees:           IInvitee[];
+  meetingId:          string;
+  joinCode:           string;
+  meetingUrl:         string;
+  roomId:             string;
+  status:             string;
+  scheduledAt:        Date | null;
+  startedAt:          Date | null;
+  endedAt:            Date | null;
+  duration:           number;
+  maxDuration:        number;
+  agenda:             IAgendaItem[];
+  isRecurring:        boolean;
   recurrence: {
     frequency: string;
     until:     Date | null;
@@ -74,8 +84,20 @@ const meetingSchema = new Schema<IMeeting>(
     participants: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     invitees:     { type: [inviteeSchema], default: [] },
 
+    participantHistory: [
+      {
+        user:     { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        name:     { type: String, default: '' },
+        joinedAt: { type: Date, required: true },
+        leftAt:   { type: Date, default: null },
+        duration: { type: Number, default: 0 }, // seconds
+        _id:      false,
+      },
+    ],
+
     meetingId:    { type: String, required: true, unique: true },
     joinCode:     { type: String, required: true, unique: true },
+    meetingUrl:   { type: String, default: '' },
     roomId:       { type: String, required: true },
     status:       { type: String, enum: Object.values(MEETING_STATUS), default: MEETING_STATUS.SCHEDULED },
 

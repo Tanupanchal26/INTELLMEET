@@ -13,6 +13,9 @@ exports.createMeeting = asyncHandler(async (req: Request, res: Response) => {
     req.user?._id,
     req.body as Record<string, unknown>
   );
+  // Push dashboard refresh to the creator
+  const io = req.app.get('io');
+  io?.to(`user:${req.user?._id}`).emit('dashboard:refresh');
   ApiResponse.created(res, meeting, 'Meeting created');
 });
 
@@ -87,9 +90,21 @@ exports.startMeeting = asyncHandler(async (req: Request, res: Response) => {
   const meeting = await meetingService.startMeeting(
     req.params.id,
     req.tenantId,
-    req.user?._id
+    req.user?._id,
+    req.user?.name
   );
   ApiResponse.ok(res, meeting, 'Meeting started');
+});
+
+// ── Leave ─────────────────────────────────────────────────────────────────────
+exports.leaveMeeting = asyncHandler(async (req: Request, res: Response) => {
+  const result = await meetingService.leaveMeeting(
+    req.params.id,
+    req.tenantId,
+    req.user?._id
+  );
+  req.app.get('io')?.to(`user:${req.user?._id}`).emit('dashboard:refresh');
+  ApiResponse.ok(res, result, 'Left meeting');
 });
 
 // ── End ───────────────────────────────────────────────────────────────────────
@@ -100,7 +115,23 @@ exports.endMeeting = asyncHandler(async (req: Request, res: Response) => {
     req.user?._id,
     req.user?.role
   );
+  const io = req.app.get('io');
+  if (io && meeting?.participants?.length) {
+    for (const p of meeting.participants) {
+      io.to(`user:${p.toString()}`).emit('dashboard:refresh');
+    }
+  }
   ApiResponse.ok(res, meeting, 'Meeting ended');
+});
+
+// ── Meeting History ───────────────────────────────────────────────────────────
+exports.getMeetingHistory = asyncHandler(async (req: Request, res: Response) => {
+  const history = await meetingService.getMeetingHistory(
+    req.params.id,
+    req.tenantId,
+    req.user?._id
+  );
+  ApiResponse.ok(res, history);
 });
 
 // ── Meeting notes ─────────────────────────────────────────────────────────────
@@ -139,8 +170,12 @@ exports.joinMeeting = asyncHandler(async (req: Request, res: Response) => {
   const meeting = await meetingService.joinByRoomId(
     code ?? meetingId ?? roomId,
     req.tenantId,
-    req.user?._id
+    req.user?._id,
+    req.user?.name
   );
+  // Push dashboard refresh to the joining user
+  const io = req.app.get('io');
+  io?.to(`user:${req.user?._id}`).emit('dashboard:refresh');
   ApiResponse.ok(res, meeting, 'Joined meeting');
 });
 

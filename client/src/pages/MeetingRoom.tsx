@@ -162,7 +162,7 @@ const MeetingRoom = () => {
 
   const [activePanel, setActivePanel] = useState<Panel>('chat');
   const [panelOpen,   setPanelOpen]   = useState(true);
-  const [socketRoomId, setSocketRoomId] = useState<string>(id ?? '');
+  const [socketRoomId, setSocketRoomId] = useState<string>('');
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, panelOpen);
 
@@ -172,7 +172,7 @@ const MeetingRoom = () => {
   useTranscription(id ?? '');
   // useMeeting registers socket event listeners — pass socketRoomId so it
   // re-registers when the real roomId arrives from the server
-  const { leaveMeeting, endMeeting } = useMeeting(socketRoomId || id, () => stopRecording());
+  const { leaveMeeting, endMeeting } = useMeeting(socketRoomId || undefined, () => stopRecording());
 
   // Auto-start recording when localStream is ready
   const { startRecording, stopRecording, switchSource } = useRecording(id ?? '', localStream, screenStreamRef);
@@ -209,15 +209,9 @@ const MeetingRoom = () => {
     if (!id) return;
     const initMeeting = async () => {
       try {
-        // Try to start (host) — fall back to getById (participant)
-        let meeting: any;
-        try {
-          const res: any = await meetingService.start(id);
-          meeting = res?.data ?? res;
-        } catch {
-          const res: any = await meetingService.getById(id);
-          meeting = res?.data ?? res;
-        }
+        // start() is idempotent: host activates, participant auto-starts or joins active
+        const res: any = await meetingService.start(id);
+        const meeting = res?.data ?? res;
         const roomId = meeting?.roomId || id;
         setSocketRoomId(roomId);
         setCurrentMeeting({

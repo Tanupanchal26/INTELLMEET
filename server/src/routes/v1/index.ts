@@ -5,6 +5,7 @@ const { authenticate, authorize, protect, scopeTenant } = authMiddleware as any;
 const rateLimitMiddleware = require('../../middleware/rateLimit.middleware') as any;
 const { authLimiter, aiLimiter } = rateLimitMiddleware;
 const validate = require('../../middleware/validate.middleware') as any;
+const healthCtrl = require('../../controllers/health') as any;
 const Tenant   = require('../../models/Tenant') as any;
 import multer from 'multer';
 
@@ -71,14 +72,16 @@ router.use('/meetings', protect, scopeTenant());
 router.get('/meetings/completed',  meetingCtrl.listCompletedMeetings);
 router.post('/meetings',         validate(MV.createMeeting),      meetingCtrl.createMeeting);
 router.get('/meetings',          validate(MV.listMeetings),        meetingCtrl.listMeetings);
-router.post('/meetings/join',                                       meetingCtrl.joinMeeting);
+router.post('/meetings/join',    validate(MV.joinMeeting),              meetingCtrl.joinMeeting);
 router.get('/meetings/:id',      validate(MV.getMeeting),          meetingCtrl.getMeeting);
 router.put('/meetings/:id',      validate(MV.updateMeeting),       meetingCtrl.updateMeeting);
 router.delete('/meetings/:id',   validate(MV.getMeeting),          meetingCtrl.deleteMeeting);
 router.post('/meetings/:id/invite', validate(MV.inviteParticipants), meetingCtrl.inviteParticipants);
 router.post('/meetings/:id/rsvp',   validate(MV.respondToInvite),    meetingCtrl.respondToInvite);
 router.post('/meetings/:id/start',  validate(MV.getMeeting),          meetingCtrl.startMeeting);
+router.post('/meetings/:id/leave',  validate(MV.getMeeting),          meetingCtrl.leaveMeeting);
 router.post('/meetings/:id/end',    validate(MV.getMeeting),          meetingCtrl.endMeeting);
+router.get('/meetings/:id/history', validate(MV.getMeeting),          meetingCtrl.getMeetingHistory);
 router.get('/meetings/:id/notes',   validate(MV.getMeeting),          meetingCtrl.getMeetingNote);
 router.put('/meetings/:id/notes',   validate(MV.upsertNote),          meetingCtrl.upsertMeetingNote);
 

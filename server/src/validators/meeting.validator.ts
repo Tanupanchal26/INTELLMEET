@@ -78,6 +78,14 @@ export const respondToInvite = {
   }),
 };
 
+export const joinMeeting = {
+  body: Joi.object({
+    code:      Joi.string().trim().max(50).optional(),
+    meetingId: Joi.string().trim().max(50).optional(),
+    roomId:    Joi.string().trim().max(100).optional(),
+  }).or('code', 'meetingId', 'roomId'),
+};
+
 export const upsertNote = {
   params: Joi.object({ id: mongoId.required() }),
   body: Joi.object({

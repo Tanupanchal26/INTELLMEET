@@ -4,14 +4,16 @@ import { randomBytes } from 'crypto';
 import ApiError from '../utils/ApiError';
 import { MEETING_STATUS, ROLES, PAGINATION } from '../constants';
 
-// Generates e.g. "ABCD-1234" using crypto — no extra dependency
-const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const randomChar = (buf: Buffer, i: number) => ALPHABET[buf[i] % ALPHABET.length];
+// ── ID / Code generators ──────────────────────────────────────────────────────
+const ALPHABET   = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const JOIN_ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
+
 const generateMeetingId = (): string => {
   const b = randomBytes(8);
-  return `${randomChar(b,0)}${randomChar(b,1)}${randomChar(b,2)}${randomChar(b,3)}-${randomChar(b,4)}${randomChar(b,5)}${randomChar(b,6)}${randomChar(b,7)}`;
+  const c = (i: number) => ALPHABET[b[i] % ALPHABET.length];
+  return `${c(0)}${c(1)}${c(2)}${c(3)}-${c(4)}${c(5)}${c(6)}${c(7)}`;
 };
-const JOIN_ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
+
 const generateJoinCode = (): string => {
   const b = randomBytes(10);
   return Array.from({ length: 10 }, (_, i) => JOIN_ALPHA[b[i] % JOIN_ALPHA.length]).join('');
@@ -59,10 +61,11 @@ const assertHost = (meeting: { host: { toString(): string } }, userId: UserId): 
   }
 };
 
-// ── Sanitize update payload — strip fields that must never be patched directly ─
+// ── Sanitize update payload ───────────────────────────────────────────────────
 const IMMUTABLE_FIELDS = new Set([
   'host', 'tenantId', 'roomId', 'status',
   'startedAt', 'endedAt', 'duration', 'participants',
+  'meetingId', 'joinCode', 'meetingUrl',
 ]);
 
 const sanitizeUpdate = (data: Record<string, unknown>): Record<string, unknown> => {
@@ -81,26 +84,28 @@ export const createMeeting = async (
 ) => {
   const { participants, ...rest } = data;
 
-  // Deduplicate participants and always include the host
   const uniqueParticipants = participants?.length
     ? [...new Set([userId.toString(), ...participants.map(String)])]
     : [userId.toString()];
 
+  const clientUrl  = process.env.CLIENT_URL || 'http://localhost:5173';
+  const meetingId  = generateMeetingId();
+  const joinCode   = generateJoinCode();
+  const meetingUrl = `${clientUrl}/lobby?join=${meetingId}`;
+
   const meeting = await meetingRepo.create({
     tenantId,
     host:         userId,
-    meetingId:    generateMeetingId(),
-    joinCode:     generateJoinCode(),
+    meetingId,
+    joinCode,
+    meetingUrl,
     roomId:       uuidv4(),
     participants: uniqueParticipants,
     ...rest,
   });
 
-  // Fire-and-forget — never block the response
   if (participants?.length) {
-    const others = participants
-      .map(String)
-      .filter((p) => p !== userId.toString());
+    const others = participants.map(String).filter((p) => p !== userId.toString());
     if (others.length) {
       notifService.notifyMeetingInvite(meeting, others, userId).catch(() => {});
     }
@@ -111,10 +116,9 @@ export const createMeeting = async (
     { path: 'participants', select: 'name avatar' },
   ]);
 
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
   return {
     ...populated.toObject ? populated.toObject() : populated,
-    joinLink: `${clientUrl}/lobby?join=${populated.meetingId}`,
+    joinLink: meetingUrl,
   };
 };
 
@@ -126,9 +130,9 @@ export const listMeetings = async (
 ) => {
   const filter: Record<string, unknown> = {
     $or: [
-      { host:             userId },
-      { participants:     userId },
-      { 'invitees.user':  userId },
+      { host:            userId },
+      { participants:    userId },
+      { 'invitees.user': userId },
     ],
   };
 
@@ -140,7 +144,6 @@ export const listMeetings = async (
   }
 
   if (search) {
-    // Escape regex special chars to prevent ReDoS
     const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     filter.title = { $regex: escaped, $options: 'i' };
   }
@@ -240,7 +243,6 @@ export const inviteParticipants = async (
     throw ApiError.badRequest('Cannot invite to an ended meeting');
   }
 
-  // Sequential to avoid duplicate-key races on the invitees array
   for (const uid of userIds) {
     await meetingRepo.addInvitee(meetingId, tenantId, { user: uid, status: 'pending' });
     await meetingRepo.addParticipant(meetingId, tenantId, uid);
@@ -265,32 +267,68 @@ export const respondToInvite = async (
   return updated;
 };
 
-// ── Start ─────────────────────────────────────────────────────────────────────
+// ── Start (host) / Join (participant) ─────────────────────────────────────────
 export const startMeeting = async (
+  meetingId: string,
+  tenantId:  TenantId,
+  userId:    UserId,
+  userName?: string
+) => {
+  const meeting = await meetingRepo.findById(meetingId, tenantId);
+
+  if (meeting.status === MEETING_STATUS.ENDED) {
+    throw ApiError.badRequest('This meeting has ended and cannot be rejoined.');
+  }
+
+  const isHost = meeting.host.toString() === userId.toString();
+  const name   = userName || 'Participant';
+
+  if (isHost) {
+    if (meeting.status === MEETING_STATUS.ACTIVE) {
+      // Idempotent re-join — still record history entry
+      await meetingRepo.recordParticipantJoin(meetingId, userId, name);
+      return meeting;
+    }
+    const started = await meetingRepo.startMeeting(meetingId);
+    if (!started) throw ApiError.badRequest('Failed to start meeting');
+    await meetingRepo.recordParticipantJoin(meetingId, userId, name);
+    const otherParticipants = meeting.participants
+      .map((p: { toString(): string }) => p.toString())
+      .filter((p: string) => p !== userId.toString());
+    notifService.notifyMeetingStarted(meeting, otherParticipants).catch(() => {});
+    return started;
+  }
+
+  // Participant joins — auto-start if still SCHEDULED
+  if (meeting.status === MEETING_STATUS.SCHEDULED) {
+    await meetingRepo.startMeeting(meetingId);
+  }
+  await meetingRepo.recordParticipantJoin(meetingId, userId, name);
+  return meetingRepo.findById(meetingId, undefined, [
+    { path: 'host',         select: 'name email avatar' },
+    { path: 'participants', select: 'name email avatar' },
+  ]);
+};
+
+// ── Leave (participant) ───────────────────────────────────────────────────────
+export const leaveMeeting = async (
   meetingId: string,
   tenantId:  TenantId,
   userId:    UserId
 ) => {
-  const meeting = await meetingRepo.findById(meetingId, tenantId);
-  assertHost(meeting, userId);
+  const Meeting = require('../models/Meeting');
+  const meeting = await Meeting.findById(meetingId);
+  if (!meeting) throw ApiError.notFound('Meeting not found');
 
   if (meeting.status === MEETING_STATUS.ENDED) {
-    throw ApiError.badRequest('Cannot restart an ended meeting.');
-  }
-  // Already active — idempotent, just return it (host rejoining their own meeting)
-  if (meeting.status === MEETING_STATUS.ACTIVE) {
-    return meeting;
+    // Already ended — nothing to do, return gracefully
+    return { left: true };
   }
 
-  const started = await meetingRepo.startMeeting(meetingId, tenantId);
-  if (!started) throw ApiError.badRequest('Failed to start meeting — check meeting status');
+  // Close the participant's open history entry
+  await meetingRepo.recordParticipantLeave(meetingId, userId);
 
-  const otherParticipants = meeting.participants
-    .map((p: { toString(): string }) => p.toString())
-    .filter((p: string) => p !== userId.toString());
-
-  notifService.notifyMeetingStarted(meeting, otherParticipants).catch(() => {});
-  return started;
+  return { left: true };
 };
 
 // ── End ───────────────────────────────────────────────────────────────────────
@@ -306,22 +344,36 @@ export const endMeeting = async (
   if (meeting.host.toString() !== userId.toString() && !isAdmin) {
     throw ApiError.forbidden('Only the host can end this meeting');
   }
-  // Allow ending both active and scheduled meetings (host may end before starting)
   if (meeting.status === MEETING_STATUS.ENDED) {
     throw ApiError.badRequest('This meeting has already ended');
   }
 
-  // If still scheduled, mark it directly without computing duration
-  if (meeting.status !== MEETING_STATUS.ACTIVE) {
-    const Meeting = require('../models/Meeting');
-    return Meeting.findByIdAndUpdate(
-      meetingId,
-      { $set: { status: MEETING_STATUS.ENDED, endedAt: new Date(), duration: 0 } },
-      { new: true }
-    );
-  }
+  const Meeting = require('../models/Meeting');
+  const now     = new Date();
 
-  return meetingRepo.endMeeting(meetingId, tenantId);
+  // Close all open participant history entries
+  await meetingRepo.closeAllParticipantHistory(meetingId);
+
+  const durationMinutes = meeting.startedAt
+    ? Math.round((now.getTime() - (meeting.startedAt as Date).getTime()) / 60_000)
+    : 0;
+
+  // Invalidate meetingId and joinCode so no one can rejoin
+  const ended = await Meeting.findByIdAndUpdate(
+    meetingId,
+    {
+      $set: {
+        status:    MEETING_STATUS.ENDED,
+        endedAt:   now,
+        duration:  durationMinutes,
+        joinCode:  `ENDED_${meeting.joinCode}`,
+        meetingId: `ENDED_${meeting.meetingId}`,
+      },
+    },
+    { new: true }
+  );
+
+  return ended;
 };
 
 // ── Meeting Notes ─────────────────────────────────────────────────────────────
@@ -330,7 +382,7 @@ export const getMeetingNote = async (
   tenantId:  TenantId,
   userId:    UserId
 ) => {
-  await getMeeting(meetingId, tenantId, userId); // access check
+  await getMeeting(meetingId, tenantId, userId);
   return meetingNoteRepo.findByMeeting(meetingId);
 };
 
@@ -340,7 +392,6 @@ export const upsertMeetingNote = async (
   userId:    UserId,
   data:      Record<string, unknown>
 ) => {
-  // Access check: find by _id without tenantId filter to avoid undefined-tenantId 404
   const Meeting = require('../models/Meeting');
   const meeting = await Meeting.findById(meetingId);
   if (!meeting) throw ApiError.notFound('Meeting not found');
@@ -350,7 +401,6 @@ export const upsertMeetingNote = async (
     meeting.participants.some((p: { toString(): string }) => p.toString() === uid);
   if (!isMember) throw ApiError.forbidden('You are not a participant of this meeting');
 
-  // Strip protected fields before upsert
   const { meeting: _m, createdBy: _c, ...safeData } = data as any;
   return meetingNoteRepo.upsert(meetingId, tenantId, userId, safeData);
 };
@@ -359,47 +409,50 @@ export const upsertMeetingNote = async (
 export const joinByRoomId = async (
   code:     string | undefined,
   tenantId: TenantId,
-  userId:   UserId
+  userId:   UserId,
+  userName?: string
 ) => {
   if (!code?.trim()) throw ApiError.badRequest('Meeting ID or join code is required');
 
-  const Meeting = require('../models/Meeting');
   const q = code.trim();
 
-  // Reject codes that have been invalidated by meeting:end
+  // Reject invalidated codes immediately
   if (q.startsWith('ENDED_')) {
     throw ApiError.badRequest('This meeting has ended. The join code is no longer valid.');
   }
 
-  // Accept meetingId (e.g. "ABCD-1234"), joinCode, or raw roomId (UUID)
-  const meeting = await Meeting.findOne({
-    $or: [{ meetingId: q }, { joinCode: q }, { roomId: q }],
-  });
+  const meeting = await meetingRepo.findByCode(q);
 
   if (!meeting) throw ApiError.notFound('Meeting not found. Check the ID or code.');
   if (meeting.status === MEETING_STATUS.ENDED) {
     throw ApiError.badRequest('This meeting has already ended and cannot be rejoined.');
   }
 
-  await Meeting.findByIdAndUpdate(
-    meeting._id,
-    { $addToSet: { participants: userId } },
-    { new: true }
+  // Auto-start SCHEDULED meetings on first join (instant-meeting flow)
+  if (meeting.status === MEETING_STATUS.SCHEDULED) {
+    await meetingRepo.startMeeting(meeting._id.toString());
+  }
+
+  // Record join in participant history
+  await meetingRepo.recordParticipantJoin(
+    meeting._id.toString(),
+    userId,
+    userName || 'Participant'
   );
 
+  const Meeting = require('../models/Meeting');
   const populated = await Meeting.findById(meeting._id)
     .populate('host',         'name email avatar')
     .populate('participants', 'name email avatar')
     .lean();
 
-  const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
   return {
     ...populated,
-    joinLink: `${clientUrl}/lobby?join=${populated.meetingId}`,
+    joinLink: populated.meetingUrl || `${process.env.CLIENT_URL || 'http://localhost:5173'}/lobby?join=${populated.meetingId}`,
   };
 };
 
-// ── Completed Meetings Dashboard ─────────────────────────────────────────────
+// ── Completed Meetings Dashboard ──────────────────────────────────────────────
 export const listCompletedMeetings = async (
   tenantId: TenantId,
   userId:   UserId,
@@ -411,12 +464,10 @@ export const listCompletedMeetings = async (
     order  = 'desc',
   }: { page?: number | string; limit?: number | string; search?: string; sortBy?: string; order?: string } = {}
 ) => {
-  const Meeting   = require('../models/Meeting');
-  const AIResult  = require('../models/AIResult');
-  const Recording = require('../models/Recording');
+  const Meeting = require('../models/Meeting');
 
-  const p = Math.max(1, parseInt(String(page), 10) || 1);
-  const l = Math.min(parseInt(String(limit), 10) || 10, 50);
+  const p    = Math.max(1, parseInt(String(page), 10) || 1);
+  const l    = Math.min(parseInt(String(limit), 10) || 10, 50);
   const skip = (p - 1) * l;
 
   const allowedSort: Record<string, string> = {
@@ -425,11 +476,16 @@ export const listCompletedMeetings = async (
   const sortField = allowedSort[sortBy as string] ?? 'endedAt';
   const sortDir   = order === 'asc' ? 1 : -1;
 
+  const ObjId = require('mongoose').Types.ObjectId;
+
   const matchStage: Record<string, unknown> = {
-    status: 'ended',
-    $or: [{ host: new (require('mongoose').Types.ObjectId)(userId.toString()) }, { participants: new (require('mongoose').Types.ObjectId)(userId.toString()) }],
+    status: MEETING_STATUS.ENDED,
+    $or: [
+      { host:         new ObjId(userId.toString()) },
+      { participants: new ObjId(userId.toString()) },
+    ],
   };
-  if (tenantId) matchStage.tenantId = new (require('mongoose').Types.ObjectId)(tenantId.toString());
+  if (tenantId) matchStage.tenantId = new ObjId(tenantId.toString());
   if (search) {
     const esc = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     matchStage.title = { $regex: esc, $options: 'i' };
@@ -491,6 +547,45 @@ export const listCompletedMeetings = async (
   };
 };
 
+// ── Meeting History (per-participant detail) ──────────────────────────────────
+export const getMeetingHistory = async (
+  meetingId: string,
+  tenantId:  TenantId,
+  userId:    UserId
+) => {
+  const Meeting = require('../models/Meeting');
+  const meeting = await Meeting.findById(meetingId)
+    .populate('host',                'name email avatar')
+    .populate('participants',        'name email avatar')
+    .populate('participantHistory.user', 'name email avatar')
+    .lean();
+
+  if (!meeting) throw ApiError.notFound('Meeting not found');
+
+  const uid = userId.toString();
+  const isHostOrParticipant =
+    meeting.host?._id?.toString() === uid ||
+    (meeting.participants ?? []).some((p: any) => p._id?.toString() === uid);
+
+  if (!isHostOrParticipant) throw ApiError.forbidden('Access denied');
+
+  return {
+    _id:                meeting._id,
+    title:              meeting.title,
+    meetingId:          meeting.meetingId,
+    joinCode:           meeting.joinCode,
+    meetingUrl:         meeting.meetingUrl,
+    status:             meeting.status,
+    host:               meeting.host,
+    participants:       meeting.participants,
+    participantHistory: meeting.participantHistory ?? [],
+    startedAt:          meeting.startedAt,
+    endedAt:            meeting.endedAt,
+    duration:           meeting.duration,
+    createdAt:          meeting.createdAt,
+  };
+};
+
 module.exports = {
   createMeeting,
   listMeetings,
@@ -500,11 +595,13 @@ module.exports = {
   inviteParticipants,
   respondToInvite,
   startMeeting,
+  leaveMeeting,
   endMeeting,
   getMeetingNote,
   upsertMeetingNote,
   joinByRoomId,
   listCompletedMeetings,
+  getMeetingHistory,
 };
 
 export default module.exports;

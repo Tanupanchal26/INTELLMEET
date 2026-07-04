@@ -1,5 +1,6 @@
 import { useNavigate, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Video, CheckSquare, Users, Calendar, BarChart2,
@@ -13,6 +14,7 @@ import { clsx } from 'clsx';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
 import { analyticsService } from '../api/analytics.api';
+import { getSocket } from '../utils/socket';
 import './Dashboard.css';
 
 const fu = ds.fadeInUp;
@@ -88,7 +90,21 @@ export default function Dashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => analyticsService.getDashboard().then((res: any) => res?.data ?? res),
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
   });
+
+  // Listen for real-time dashboard:refresh pushed by the server
+  const qc = useQueryClient();
+  useEffect(() => {
+    const socket = getSocket();
+    const handler = () => {
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
+    };
+    socket.on('dashboard:refresh', handler);
+    return () => { socket.off('dashboard:refresh', handler); };
+  }, [qc]);
 
   if (isLoading || !data) {
     return (
@@ -114,12 +130,12 @@ export default function Dashboard() {
   const { metrics, recentMeetings, upcomingMeetings, taskData, recentActivity } = data;
 
   const dynamicMetrics = [
-    { label: 'Meetings Created',     value: metrics.meetingsCreated,     icon: Video,        color: 'text-blue-600 dark:text-blue-400',    bg: 'bg-blue-500/10 border border-blue-500/20',    glowClass: 'glow-blue' },
-    { label: 'Meetings Joined',      value: metrics.meetingsJoined,      icon: Users,        color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-500/10 border border-indigo-500/20', glowClass: '' },
-    { label: 'Total Meetings',       value: metrics.totalMeetings,       icon: Calendar,     color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-500/10 border border-purple-500/20', glowClass: 'glow-purple' },
-    { label: 'Total Meeting Hours',  value: `${metrics.totalMeetingHours}h`, icon: Clock,    color: 'text-amber-600 dark:text-amber-400',   bg: 'bg-amber-500/10 border border-amber-500/20',   glowClass: '' },
-    { label: 'AI Summaries',         value: metrics.aiSummariesGenerated, icon: Brain,       color: 'text-rose-600 dark:text-rose-400',     bg: 'bg-rose-500/10 border border-rose-500/20',     glowClass: 'glow-rose' },
-    { label: 'Tasks Completed',      value: metrics.tasksCompleted,      icon: CheckSquare,  color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10 border border-emerald-500/20', glowClass: 'glow-emerald' },
+    { label: 'Meetings Created',      value: metrics.meetingsCreated,                                                icon: Video,        color: 'text-blue-600 dark:text-blue-400',    bg: 'bg-blue-500/10 border border-blue-500/20',    glowClass: 'glow-blue' },
+    { label: 'Meetings Joined',       value: metrics.meetingsJoined,                                                icon: Users,        color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-500/10 border border-indigo-500/20', glowClass: '' },
+    { label: 'Total Meetings',        value: metrics.totalMeetings,                                                 icon: Calendar,     color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-500/10 border border-purple-500/20', glowClass: 'glow-purple' },
+    { label: 'Meeting Hours',         value: `${metrics.totalMeetingHours}h ${metrics.totalMeetingMinutes % 60}m`,  icon: Clock,        color: 'text-amber-600 dark:text-amber-400',   bg: 'bg-amber-500/10 border border-amber-500/20',   glowClass: '' },
+    { label: 'Upcoming Meetings',     value: metrics.upcomingCount ?? 0,                                            icon: Calendar,     color: 'text-teal-600 dark:text-teal-400',     bg: 'bg-teal-500/10 border border-teal-500/20',     glowClass: '' },
+    { label: 'Tasks Completed',       value: metrics.tasksCompleted,                                                icon: CheckSquare,  color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10 border border-emerald-500/20', glowClass: 'glow-emerald' },
   ];
 
   const tasksList = taskData.map((t: any) => ({
@@ -150,6 +166,19 @@ export default function Dashboard() {
           </motion.div>
         ))}
       </div>
+
+      {/* ── Last Meeting strip ── */}
+      {metrics.lastMeeting && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, delay: 0.12 }}
+          className="flex items-center gap-3 px-4 py-3 rounded-xl bg-[var(--color-surface-2)] border border-[var(--color-border)] text-sm">
+          <Clock size={14} className="text-[var(--color-text-secondary)] shrink-0" />
+          <span className="text-[var(--color-text-secondary)]">Last meeting:</span>
+          <span className="font-medium text-[var(--color-text)] truncate">{metrics.lastMeeting.title}</span>
+          <span className="ml-auto shrink-0 text-xs text-[var(--color-text-secondary)]">
+            {metrics.lastMeeting.duration ? `${metrics.lastMeeting.duration} min` : timeAgo(metrics.lastMeeting.endedAt)}
+          </span>
+        </motion.div>
+      )}
 
       <motion.div {...fu(0.15)}>
         <div className="db-grid-2">

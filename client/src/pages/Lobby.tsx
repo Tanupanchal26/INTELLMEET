@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Hash, Calendar, Clock, Video, ArrowRight, Users, Copy, Check } from 'lucide-react';
+import { Plus, Calendar, Clock, Video, ArrowRight, Copy, Check } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { meetingService } from '../api/meeting.api';
 import { MEETING_ROUTE } from '../constants';
@@ -11,7 +11,7 @@ import Modal from '../components/common/Modal';
 import toast from 'react-hot-toast';
 import { PageContainer } from '../components/layout/PageContainer';
 import { PageHeader } from '../components/layout/PageHeader';
-import { useAppSelector } from '../hooks/useAppDispatch';
+
 
 
 const fmt = (iso: string) => {
@@ -25,12 +25,10 @@ const Lobby = () => {
   const [showCreate, setShowCreate] = useState(searchParams.get('new') === '1');
   const [showStart, setShowStart] = useState(searchParams.get('join') !== null);
   const [createdMeeting, setCreatedMeeting] = useState<any>(null);
-  const [startMeetingId, setStartMeetingId] = useState('');
   const [title, setTitle] = useState('');
   const [joinId, setJoinId] = useState(searchParams.get('join') ?? '');
   const [copied, setCopied] = useState<'id' | 'code' | 'link' | 'all' | null>(null);
   const qc = useQueryClient();
-  const user = useAppSelector((state: any) => state.auth.user);
 
   const copyToClipboard = (text: string, type: 'id' | 'code' | 'link') => {
     navigator.clipboard.writeText(text).then(() => {
@@ -48,7 +46,7 @@ const Lobby = () => {
   const meetings = Array.isArray(meetingsResponse) ? meetingsResponse : [];
 
   const createMutation = useMutation({
-    mutationFn: (payload: { title: string; tenantId?: string }) => {
+    mutationFn: (payload: { title: string }) => {
       return meetingService.create(payload as any) as Promise<any>
     },
     onSuccess: (response: any) => {
@@ -90,7 +88,7 @@ const Lobby = () => {
   const handleCreate = () => {
     if (createMutation.isPending) return;
     setCreatedMeeting(null);
-    createMutation.mutate({ title: title.trim() || 'Quick Meeting', tenantId: user?.tenantId });
+    createMutation.mutate({ title: title.trim() || 'Quick Meeting' });
   };
 
   const handleJoinCreated = () => {
@@ -177,7 +175,7 @@ const Lobby = () => {
             <div className="py-12 text-center text-sm text-[var(--color-text-dim)]">No recent meetings found</div>
           ) : (
             meetings.map((m: any) => (
-              <div key={m._id} className="flex items-center gap-4 p-4 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-border-strong)]/30 hover:bg-[var(--color-surface-hover)] transition-all cursor-pointer shadow-sm hover:shadow" onClick={() => navigate(MEETING_ROUTE(m._id))}>
+              <div key={m._id} className="flex items-center gap-4 p-4 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-border-strong)]/30 hover:bg-[var(--color-surface-hover)] transition-all cursor-pointer shadow-sm hover:shadow" onClick={() => m.status !== 'ended' && navigate(MEETING_ROUTE(m._id))}>
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${m.status === 'active' ? 'bg-[#AFA9B4]/20 border-[#AFA9B4]/30' : 'bg-[var(--color-bg-tertiary)] border border-[var(--color-border)]/60'}`}>
                   <Video size={16} className={m.status === 'active' ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'} />
                 </div>
@@ -189,8 +187,8 @@ const Lobby = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  {m.status === 'active' ? <Badge variant="success">Live</Badge> : <Badge variant="default">Ended</Badge>}
-                  <Button variant="ghost" size="sm" className="gap-1.5 font-bold hover:text-[var(--color-text)]">Join <ArrowRight size={12} /></Button>
+                  {m.status === 'active' ? <Badge variant="success">Live</Badge> : m.status === 'ended' ? <Badge variant="default">Ended</Badge> : <Badge variant="info">Scheduled</Badge>}
+                  {m.status !== 'ended' && <Button variant="ghost" size="sm" className="gap-1.5 font-bold hover:text-[var(--color-text)]">Join <ArrowRight size={12} /></Button>}
                 </div>
               </div>
             ))
@@ -330,7 +328,7 @@ const Lobby = () => {
                 <div className="text-xs text-[var(--color-text-dim)]">No upcoming meetings</div>
               ) : (
                 meetings.map((m: any) => (
-                  <div key={m._id} className="flex items-center justify-between p-2.5 rounded-lg border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] cursor-pointer transition-colors" onClick={() => setStartMeetingId(m._id)}>
+                  <div key={m._id} className="flex items-center justify-between p-2.5 rounded-lg border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] cursor-pointer transition-colors">
                     <div className="flex flex-col min-w-0">
                       <span className="text-sm font-semibold truncate text-[var(--color-text)]">{m.title}</span>
                       <span className="text-xs text-[var(--color-text-dim)]">{fmt(m.startedAt || m.createdAt)}</span>

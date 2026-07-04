@@ -3,78 +3,159 @@ const Meeting      = require('../models/Meeting');
 const Task         = require('../models/Task');
 const AIResult     = require('../models/AIResult');
 const Notification = require('../models/Notification');
-const User         = require('../models/User');
 const mongoose     = require('mongoose');
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+const toOid = (v) => {
+  try { return new mongoose.Types.ObjectId(String(v)); } catch { return null; }
+};
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
 exports.getDashboardMetrics = async (tenantId, userId) => {
-  // Guard: if tenantId is missing/invalid, skip tenant-scoped queries gracefully
-  let tid;
-  try { tid = new mongoose.Types.ObjectId(tenantId); } catch { tid = null; }
-  const uid = new mongoose.Types.ObjectId(userId);
-  if (!tid) {
+  const uid = toOid(userId);
+  if (!uid) {
     return {
-      metrics: { meetingsCreated: 0, meetingsJoined: 0, totalMeetings: 0, totalMeetingHours: 0, aiSummariesGenerated: 0, tasksCompleted: 0, totalTasks: 0 },
+      metrics: {
+        meetingsCreated: 0, meetingsJoined: 0, totalMeetings: 0,
+        totalMeetingHours: 0, totalMeetingMinutes: 0,
+        aiSummariesGenerated: 0, tasksCompleted: 0, totalTasks: 0,
+        lastMeeting: null, upcomingCount: 0,
+      },
       recentMeetings: [], upcomingMeetings: [], taskData: [], recentActivity: [],
     };
   }
 
+  const tid = toOid(tenantId); // may be null — queries below handle both cases
+
+  // Build tenant match fragment (used in every query)
+  const tenantMatch = tid ? { tenantId: tid } : {};
+
+  const now = new Date();
+
   const [
+    meetingAgg,
     taskData,
     recentMeetings,
     upcomingMeetings,
-    meetingStats,
-    meetingHoursAgg,
     aiSummariesAgg,
     rawActivity,
   ] = await Promise.all([
+
+    // ── Single pipeline for all meeting metrics ──────────────────────────────
+    Meeting.aggregate([
+      {
+        $match: {
+          ...tenantMatch,
+          $or: [{ host: uid }, { participants: uid }],
+        },
+      },
+      {
+        $facet: {
+          // Meetings this user created
+          created: [
+            { $match: { host: uid } },
+            { $count: 'n' },
+          ],
+          // Meetings this user actually attended (has a participantHistory entry)
+          joined: [
+            { $match: { 'participantHistory.user': uid } },
+            { $count: 'n' },
+          ],
+          // Total meetings (host OR participant)
+          total: [
+            { $count: 'n' },
+          ],
+          // Sum of duration (minutes) for ended meetings
+          hours: [
+            { $match: { status: 'ended', duration: { $gt: 0 } } },
+            { $group: { _id: null, totalMinutes: { $sum: '$duration' } } },
+          ],
+          // Last ended meeting
+          lastMeeting: [
+            { $match: { status: 'ended' } },
+            { $sort: { endedAt: -1 } },
+            { $limit: 1 },
+            { $project: { title: 1, endedAt: 1, duration: 1 } },
+          ],
+          // Upcoming count
+          upcomingCount: [
+            { $match: { status: 'scheduled', scheduledAt: { $gte: now } } },
+            { $count: 'n' },
+          ],
+        },
+      },
+    ]),
+
+    // ── Tasks ────────────────────────────────────────────────────────────────
     Task.aggregate([
-      { $match: { tenantId: tid, $or: [{ assignedTo: uid }, { createdBy: uid }] } },
+      { $match: { ...tenantMatch, $or: [{ assignedTo: uid }, { createdBy: uid }] } },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]),
-    Meeting.find({ tenantId: tid, participants: uid, status: { $in: ['ended', 'active'] } })
+
+    // ── Recent meetings (ended + active) ─────────────────────────────────────
+    Meeting.find({
+      ...tenantMatch,
+      $or: [{ host: uid }, { participants: uid }],
+      status: { $in: ['ended', 'active'] },
+    })
       .populate('host', 'name avatar')
       .populate('participants', 'name avatar')
-      .sort({ startedAt: -1 }).limit(5).lean(),
-    Meeting.find({ tenantId: tid, participants: uid, status: 'scheduled', scheduledAt: { $gte: new Date() } })
+      .sort({ startedAt: -1 })
+      .limit(5)
+      .lean(),
+
+    // ── Upcoming meetings ─────────────────────────────────────────────────────
+    Meeting.find({
+      ...tenantMatch,
+      $or: [{ host: uid }, { participants: uid }],
+      status: 'scheduled',
+      scheduledAt: { $gte: now },
+    })
       .populate('host', 'name avatar')
       .populate('participants', 'name avatar')
-      .sort({ scheduledAt: 1 }).limit(4).lean(),
-    Promise.all([
-      Meeting.countDocuments({ tenantId: tid, host: uid }),
-      Meeting.countDocuments({ tenantId: tid, participants: uid, host: { $ne: uid } }),
-      Meeting.countDocuments({ tenantId: tid, $or: [{ host: uid }, { participants: uid }] }),
-    ]),
-    Meeting.aggregate([
-      { $match: { tenantId: tid, participants: uid, status: 'ended', duration: { $gt: 0 } } },
-      { $group: { _id: null, totalMinutes: { $sum: '$duration' } } },
-    ]),
+      .sort({ scheduledAt: 1 })
+      .limit(4)
+      .lean(),
+
+    // ── AI summaries ──────────────────────────────────────────────────────────
     AIResult.aggregate([
       {
         $lookup: {
-          from: 'meetings',
-          localField: 'meeting',
-          foreignField: '_id',
-          as: 'meetingDoc',
+          from: 'meetings', localField: 'meeting', foreignField: '_id',
+          pipeline: [{ $project: { tenantId: 1, participants: 1 } }],
+          as: 'mtg',
         },
       },
-      { $unwind: '$meetingDoc' },
+      { $unwind: '$mtg' },
       {
         $match: {
-          'meetingDoc.tenantId': tid,
-          'meetingDoc.participants': uid,
-          summary: { $ne: '' },
+          ...(tid ? { 'mtg.tenantId': tid } : {}),
+          'mtg.participants': uid,
+          summary: { $nin: [null, ''] },
         },
       },
       { $count: 'total' },
     ]),
+
+    // ── Recent activity (notifications) ──────────────────────────────────────
     Notification.find({ recipient: uid }).sort({ createdAt: -1 }).limit(5).lean(),
   ]);
 
-  const [meetingsCreated, meetingsJoined, totalMeetings] = meetingStats;
-  const doneTasks = taskData.find(t => t._id === 'done')?.count || 0;
-  const totalTasks = taskData.reduce((acc, curr) => acc + curr.count, 0);
-  const totalMeetingHours = Math.round((meetingHoursAgg[0]?.totalMinutes || 0) / 60);
-  const aiSummariesGenerated = aiSummariesAgg[0]?.total || 0;
+  // Unpack facet results
+  const agg            = meetingAgg[0] ?? {};
+  const meetingsCreated  = agg.created?.[0]?.n        ?? 0;
+  const meetingsJoined   = agg.joined?.[0]?.n         ?? 0;
+  const totalMeetings    = agg.total?.[0]?.n           ?? 0;
+  const totalMinutes     = agg.hours?.[0]?.totalMinutes ?? 0;
+  const totalMeetingMinutes = totalMinutes;
+  const totalMeetingHours   = parseFloat((totalMinutes / 60).toFixed(1));
+  const lastMeeting      = agg.lastMeeting?.[0]       ?? null;
+  const upcomingCount    = agg.upcomingCount?.[0]?.n  ?? 0;
+
+  const doneTasks        = taskData.find(t => t._id === 'done')?.count ?? 0;
+  const totalTasks       = taskData.reduce((s, t) => s + t.count, 0);
+  const aiSummariesGenerated = aiSummariesAgg[0]?.total ?? 0;
+
   const recentActivity = rawActivity.map(n => ({
     id: n._id, type: n.type, text: n.body || n.title, time: n.createdAt, isRead: n.isRead,
   }));
@@ -85,9 +166,12 @@ exports.getDashboardMetrics = async (tenantId, userId) => {
       meetingsJoined,
       totalMeetings,
       totalMeetingHours,
+      totalMeetingMinutes,
       aiSummariesGenerated,
-      tasksCompleted:      doneTasks,
+      tasksCompleted: doneTasks,
       totalTasks,
+      lastMeeting,
+      upcomingCount,
     },
     recentMeetings,
     upcomingMeetings,
@@ -96,104 +180,117 @@ exports.getDashboardMetrics = async (tenantId, userId) => {
   };
 };
 
+// ── Analytics page ────────────────────────────────────────────────────────────
 exports.getAnalytics = async (tenantId, userId) => {
-  const tid = new mongoose.Types.ObjectId(tenantId);
-  const uid = new mongoose.Types.ObjectId(userId);
+  const uid = toOid(userId);
+  const tid = toOid(tenantId);
+  if (!uid) return { weekly: [], taskData: [], productivity: [], engagement: [] };
 
-  // Task completion pie chart data
+  const tenantMatch = tid ? { tenantId: tid } : {};
+
+  // Task completion pie
   const taskStats = await Task.aggregate([
-    { $match: { tenantId: tid, $or: [{ assignedTo: uid }, { createdBy: uid }] } },
-    { $group: { _id: '$status', count: { $sum: 1 } } }
+    { $match: { ...tenantMatch, $or: [{ assignedTo: uid }, { createdBy: uid }] } },
+    { $group: { _id: '$status', count: { $sum: 1 } } },
   ]);
 
   const formatTaskStats = [
-    { name: 'Done', value: taskStats.find(t => t._id === 'done')?.count || 0, color: '#10B981' },
-    { name: 'In Progress', value: taskStats.find(t => t._id === 'in_progress' || t._id === 'in-progress')?.count || 0, color: '#AFA9B4' },
-    { name: 'To Do', value: taskStats.find(t => t._id === 'todo')?.count || 0, color: '#AAAFAF' },
+    { name: 'Done',        value: taskStats.find(t => t._id === 'done')?.count ?? 0,        color: '#10B981' },
+    { name: 'In Progress', value: taskStats.find(t => ['in_progress','in-progress'].includes(t._id))?.count ?? 0, color: '#AFA9B4' },
+    { name: 'To Do',       value: taskStats.find(t => t._id === 'todo')?.count ?? 0,        color: '#AAAFAF' },
   ];
 
-  // Real weekly data — meetings and tasks per day for the last 7 days
+  // Weekly activity — scoped to this user
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   sevenDaysAgo.setHours(0, 0, 0, 0);
 
-  const meetingsPerDay = await Meeting.aggregate([
-    { $match: { tenantId: tid, createdAt: { $gte: sevenDaysAgo } } },
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-        count: { $sum: 1 }
-      }
-    }
-  ]);
-
-  const tasksPerDay = await Task.aggregate([
-    { $match: { tenantId: tid, createdAt: { $gte: sevenDaysAgo } } },
-    {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-        count: { $sum: 1 }
-      }
-    }
+  const [meetingsPerDay, tasksPerDay] = await Promise.all([
+    Meeting.aggregate([
+      {
+        $match: {
+          ...tenantMatch,
+          $or: [{ host: uid }, { participants: uid }],
+          createdAt: { $gte: sevenDaysAgo },
+        },
+      },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+    ]),
+    Task.aggregate([
+      { $match: { ...tenantMatch, $or: [{ assignedTo: uid }, { createdBy: uid }], createdAt: { $gte: sevenDaysAgo } } },
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+    ]),
   ]);
 
   const weekly = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr  = d.toISOString().split('T')[0];
     const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short' });
     weekly.push({
-      day: dayLabel,
-      meetings: meetingsPerDay.find(m => m._id === dateStr)?.count || 0,
-      tasks: tasksPerDay.find(t => t._id === dateStr)?.count || 0
+      day:      dayLabel,
+      meetings: meetingsPerDay.find(m => m._id === dateStr)?.count ?? 0,
+      tasks:    tasksPerDay.find(t => t._id === dateStr)?.count    ?? 0,
     });
   }
 
-  // Productivity — single aggregate over last 6 weeks
+  // Productivity — 6-week task completion rate for this user
   const sixWeeksAgo = new Date();
   sixWeeksAgo.setDate(sixWeeksAgo.getDate() - 42);
+
   const [prodTotal, prodDone] = await Promise.all([
     Task.aggregate([
-      { $match: { tenantId: tid, createdAt: { $gte: sixWeeksAgo }, $or: [{ assignedTo: uid }, { createdBy: uid }] } },
-      { $group: { _id: { $floor: { $divide: [{ $subtract: ['$createdAt', sixWeeksAgo] }, 1000 * 60 * 60 * 24 * 7] } }, count: { $sum: 1 } } },
+      { $match: { ...tenantMatch, createdAt: { $gte: sixWeeksAgo }, $or: [{ assignedTo: uid }, { createdBy: uid }] } },
+      { $group: { _id: { $floor: { $divide: [{ $subtract: ['$createdAt', sixWeeksAgo] }, 604_800_000] } }, count: { $sum: 1 } } },
     ]),
     Task.aggregate([
-      { $match: { tenantId: tid, createdAt: { $gte: sixWeeksAgo }, status: 'done', $or: [{ assignedTo: uid }, { createdBy: uid }] } },
-      { $group: { _id: { $floor: { $divide: [{ $subtract: ['$createdAt', sixWeeksAgo] }, 1000 * 60 * 60 * 24 * 7] } }, count: { $sum: 1 } } },
+      { $match: { ...tenantMatch, createdAt: { $gte: sixWeeksAgo }, status: 'done', $or: [{ assignedTo: uid }, { createdBy: uid }] } },
+      { $group: { _id: { $floor: { $divide: [{ $subtract: ['$createdAt', sixWeeksAgo] }, 604_800_000] } }, count: { $sum: 1 } } },
     ]),
   ]);
+
   const productivity = Array.from({ length: 6 }, (_, i) => {
-    const total = prodTotal.find(r => r._id === i)?.count || 0;
-    const done  = prodDone.find(r => r._id === i)?.count || 0;
+    const total = prodTotal.find(r => r._id === i)?.count ?? 0;
+    const done  = prodDone.find(r => r._id === i)?.count  ?? 0;
     return { week: `W${i + 1}`, score: total > 0 ? Math.round((done / total) * 100) : 0 };
   });
 
-  // Engagement — real data
-  const totalEndedMeetings = await Meeting.countDocuments({ tenantId: tid, status: 'ended' });
-  const durationAgg = await Meeting.aggregate([
-    { $match: { tenantId: tid, status: 'ended', duration: { $gt: 0 } } },
-    { $group: { _id: null, avgDuration: { $avg: '$duration' } } }
+  // Engagement KPIs — scoped to user
+  const [durationAgg, userMeetingCount, userEndedCount, aiResultCount, allTasks, doneTasks] = await Promise.all([
+    Meeting.aggregate([
+      { $match: { ...tenantMatch, $or: [{ host: uid }, { participants: uid }], status: 'ended', duration: { $gt: 0 } } },
+      { $group: { _id: null, avgDuration: { $avg: '$duration' } } },
+    ]),
+    Meeting.countDocuments({ ...tenantMatch, $or: [{ host: uid }, { participants: uid }] }),
+    Meeting.countDocuments({ ...tenantMatch, $or: [{ host: uid }, { participants: uid }], status: 'ended' }),
+    AIResult.aggregate([
+      {
+        $lookup: {
+          from: 'meetings', localField: 'meeting', foreignField: '_id',
+          pipeline: [{ $project: { participants: 1, tenantId: 1 } }],
+          as: 'mtg',
+        },
+      },
+      { $unwind: '$mtg' },
+      { $match: { ...(tid ? { 'mtg.tenantId': tid } : {}), 'mtg.participants': uid, summary: { $nin: [null, ''] } } },
+      { $count: 'total' },
+    ]),
+    Task.countDocuments({ ...tenantMatch, $or: [{ assignedTo: uid }, { createdBy: uid }] }),
+    Task.countDocuments({ ...tenantMatch, $or: [{ assignedTo: uid }, { createdBy: uid }], status: 'done' }),
   ]);
-  const avgMeetingDuration = Math.round(durationAgg[0]?.avgDuration || 0);
 
-  const totalAllTasks = await Task.countDocuments({ tenantId: tid });
-  const totalDoneTasks = await Task.countDocuments({ tenantId: tid, status: 'done' });
-  const aiResultCount = await AIResult.countDocuments({ summary: { $ne: '' } });
+  const avgDuration = Math.round(durationAgg[0]?.avgDuration ?? 0);
+  const aiCount     = aiResultCount[0]?.total ?? 0;
 
   const engagement = [
-    { label: 'Avg Meeting Duration', value: `${avgMeetingDuration || 47} min`, trend: '+5 min', up: true },
-    { label: 'Total Meetings', value: `${totalEndedMeetings}`, trend: `${totalEndedMeetings}`, up: true },
-    { label: 'AI Summary Usage', value: `${aiResultCount}`, trend: `${aiResultCount} generated`, up: true },
-    { label: 'Action Item Completion', value: totalAllTasks > 0 ? `${Math.round((totalDoneTasks / totalAllTasks) * 100)}%` : '0%', trend: `${totalDoneTasks}/${totalAllTasks}`, up: totalDoneTasks > 0 },
+    { label: 'Avg Meeting Duration',    value: `${avgDuration || 0} min`,  trend: `${userEndedCount} ended`,                                    up: avgDuration > 0 },
+    { label: 'Total Meetings',          value: `${userMeetingCount}`,       trend: `${userEndedCount} completed`,                                up: userMeetingCount > 0 },
+    { label: 'AI Summary Usage',        value: `${aiCount}`,                trend: `${aiCount} generated`,                                       up: aiCount > 0 },
+    { label: 'Action Item Completion',  value: allTasks > 0 ? `${Math.round((doneTasks / allTasks) * 100)}%` : '0%', trend: `${doneTasks}/${allTasks}`, up: doneTasks > 0 },
   ];
 
-  return {
-    weekly,
-    taskData: formatTaskStats,
-    productivity,
-    engagement,
-  };
+  return { weekly, taskData: formatTaskStats, productivity, engagement };
 };
 
 export {};

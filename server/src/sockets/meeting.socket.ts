@@ -1,11 +1,12 @@
 import type { Server, Socket } from 'socket.io';
 
-const MeetingNote = require('../models/MeetingNote');
-const Meeting     = require('../models/Meeting');
-const AIResult    = require('../models/AIResult');
-const aiService   = require('../services/ai.service');
+const MeetingNote    = require('../models/MeetingNote');
+const Meeting        = require('../models/Meeting');
+const AIResult       = require('../models/AIResult');
+const aiService      = require('../services/ai.service');
+const meetingService = require('../services/meeting.service');
 const transcriptionService = require('../services/transcription.service');
-const logger      = require('../shared/utils/logger').default;
+const logger         = require('../shared/utils/logger').default;
 
 type MeetingUser = {
   id:       string;
@@ -45,7 +46,7 @@ const buildParticipantsList = (
         socketId:        sid,
         isHost:          hostIdStr ? s.user.id === hostIdStr : false,
         isMuted:         s.isMuted         ?? false,
-        isVideoOff:      s.isVideoOff      ?? true,
+        isVideoOff:      s.isVideoOff      ?? false,
         isScreenSharing: s.isScreenSharing ?? false,
       });
     }
@@ -81,11 +82,14 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
       socket.join(`chat:${roomId}`);
       socket.meetingRooms!.add(roomId);
 
+      // Refresh dashboard for the joining user
+      io.to(`user:${user.id}`).emit('dashboard:refresh');
+
       socket.to(`meeting:${roomId}`).emit('meeting:user-joined', {
         socketId: socket.id,
         user: { id: user.id, name: user.name, avatar: user.avatar },
         isMuted:         socket.isMuted         ?? false,
-        isVideoOff:      socket.isVideoOff      ?? true,
+        isVideoOff:      socket.isVideoOff      ?? false,
         isScreenSharing: socket.isScreenSharing ?? false,
       });
 
@@ -94,7 +98,14 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
       const room = io.sockets.adapter.rooms.get(`meeting:${roomId}`);
 
       io.to(`meeting:${roomId}`).emit('meeting:participant-count', room?.size ?? 0);
-      io.to(`meeting:${roomId}`).emit('meeting:participants-list', participants);
+      // Send full participants list (with media state) to the new joiner
+      socket.emit('meeting:participants-list', participants);
+      // Broadcast updated list to everyone so all tiles refresh
+      socket.to(`meeting:${roomId}`).emit('meeting:participants-list', participants);
+
+      // Ask all existing participants to re-broadcast their media state
+      // so the new joiner immediately sees correct camera/mic status
+      socket.to(`meeting:${roomId}`).emit('meeting:request-media-state', { socketId: socket.id });
     } catch (err) {
       logger.error(`[SOCKET] meeting:join error: ${(err as Error).message}`);
       socket.emit('meeting:error', { message: 'Failed to join meeting. Please try again.' });
@@ -110,10 +121,18 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
   });
 
   // ── Leave ─────────────────────────────────────────────────────────────────
-  socket.on('meeting:leave', (roomId: unknown) => {
+  socket.on('meeting:leave', async (roomId: unknown) => {
     if (!isValidId(roomId)) return;
     try {
       const user = getUser();
+
+      // Persist leave in participantHistory
+      const mtg = await Meeting.findOne({ roomId });
+      if (mtg && mtg.status !== 'ended') {
+        const meetingRepo = require('../repositories/meeting.repository').default;
+        meetingRepo.recordParticipantLeave(mtg._id.toString(), user.id).catch(() => {});
+      }
+
       socket.leave(`meeting:${roomId}`);
       socket.leave(`chat:${roomId}`);
       socket.meetingRooms?.delete(roomId);
@@ -126,11 +145,12 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
       const room = io.sockets.adapter.rooms.get(`meeting:${roomId}`);
       io.to(`meeting:${roomId}`).emit('meeting:participant-count', room?.size ?? 0);
 
-      Meeting.findOne({ roomId }).then((mtg: any) => {
-        const hostIdStr = mtg?.host?.toString();
-        const participants = buildParticipantsList(io, roomId, hostIdStr);
-        io.to(`meeting:${roomId}`).emit('meeting:participants-list', participants);
-      }).catch(() => {});
+      const hostIdStr = mtg?.host?.toString();
+      const participants = buildParticipantsList(io, roomId, hostIdStr);
+      io.to(`meeting:${roomId}`).emit('meeting:participants-list', participants);
+
+      // Refresh dashboard for the leaving user
+      io.to(`user:${user.id}`).emit('dashboard:refresh');
     } catch (err) {
       logger.error(`[SOCKET] meeting:leave error: ${(err as Error).message}`);
     }
@@ -144,6 +164,7 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
     socket.isMuted         = isMuted;
     socket.isVideoOff      = isVideoOff;
     socket.isScreenSharing = isScreenSharing;
+    // Relay to all other participants in the room
     socket.to(`meeting:${roomId}`).emit('meeting:media-state', {
       userId: socket.user.id,
       socketId: socket.id,
@@ -151,6 +172,15 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
       isVideoOff,
       isScreenSharing,
     });
+  });
+
+  // ── Request media state relay (server forwards to specific socket) ────────
+  socket.on('meeting:request-media-state', ({ roomId, socketId: targetId }: {
+    roomId: unknown; socketId: unknown;
+  }) => {
+    if (!isValidId(roomId) || !isValidId(targetId as string) || !socket.user?.id) return;
+    // Forward the request only to the target socket
+    io.to(targetId as string).emit('meeting:request-media-state', { socketId: socket.id });
   });
 
   // ── Screen share ──────────────────────────────────────────────────────────
@@ -319,6 +349,10 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
 
       const meetingDbId = meeting._id.toString();
 
+      // Close all open participant history entries
+      const meetingRepo = require('../repositories/meeting.repository').default;
+      await meetingRepo.closeAllParticipantHistory(meetingDbId);
+
       // Mark ended + invalidate joinCode and meetingId so nobody can rejoin.
       // Prefix with 'ENDED_' to make them non-matchable without losing audit trail.
       await Meeting.findOneAndUpdate(
@@ -335,6 +369,15 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
 
       // Notify all participants BEFORE removing them so they receive the event
       io.to(`meeting:${roomId}`).emit('meeting:ended-by-host', { roomId });
+
+      // Refresh dashboard for every participant in the room
+      const roomSockets = io.sockets.adapter.rooms.get(`meeting:${roomId}`);
+      if (roomSockets) {
+        for (const sid of roomSockets) {
+          const s = io.sockets.sockets.get(sid) as MeetingSocket | undefined;
+          if (s?.user?.id) io.to(`user:${s.user.id}`).emit('dashboard:refresh');
+        }
+      }
 
       // Kick every socket out of the meeting and chat rooms
       const room = io.sockets.adapter.rooms.get(`meeting:${roomId}`);
@@ -404,9 +447,9 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
   // ── Disconnect cleanup — remove from stale rooms, notify peers ───────────
   socket.on('disconnect', () => {
     if (!socket.meetingRooms?.size || !socket.user?.id) return;
+    const meetingRepo = require('../repositories/meeting.repository').default;
 
     for (const roomId of socket.meetingRooms) {
-      // Notify remaining participants
       socket.to(`meeting:${roomId}`).emit('meeting:user-left', {
         socketId: socket.id,
         userId:   socket.user.id,
@@ -415,9 +458,12 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
       const room = io.sockets.adapter.rooms.get(`meeting:${roomId}`);
       io.to(`meeting:${roomId}`).emit('meeting:participant-count', room?.size ?? 0);
 
-      // Broadcast updated list after a tick so the socket is fully removed
+      // Persist leave + broadcast updated list after socket is fully removed
       setImmediate(() => {
         Meeting.findOne({ roomId }).then((mtg: any) => {
+          if (mtg && mtg.status !== 'ended') {
+            meetingRepo.recordParticipantLeave(mtg._id.toString(), socket.user!.id).catch(() => {});
+          }
           const hostIdStr = mtg?.host?.toString();
           const participants = buildParticipantsList(io, roomId, hostIdStr);
           io.to(`meeting:${roomId}`).emit('meeting:participants-list', participants);

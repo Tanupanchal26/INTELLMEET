@@ -10,13 +10,40 @@ const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLoc
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (!videoRef.current) return;
-    if (stream && !isVideoOff) {
-      videoRef.current.srcObject = stream;
+    const el = videoRef.current;
+    if (!el) return;
+
+    const hasVideo = !!stream && stream.getVideoTracks().some(t => t.enabled && t.readyState === 'live');
+
+    if (hasVideo && !isVideoOff) {
+      // Only reassign srcObject when the stream identity actually changes
+      if (el.srcObject !== stream) {
+        el.srcObject = stream;
+      }
+      el.play().catch(() => {});
     } else {
-      // Clear the video element so frozen frame doesn't linger
-      videoRef.current.srcObject = null;
+      el.srcObject = null;
     }
+  }, [stream, isVideoOff]);
+
+  // Re-check whenever a track is added/removed (e.g. remote camera turns on mid-call)
+  useEffect(() => {
+    if (!stream || !videoRef.current) return;
+    const onTrackChange = () => {
+      const el = videoRef.current;
+      if (!el) return;
+      const hasVideo = stream.getVideoTracks().some(t => t.enabled && t.readyState === 'live');
+      if (hasVideo && !isVideoOff) {
+        if (el.srcObject !== stream) el.srcObject = stream;
+        el.play().catch(() => {});
+      }
+    };
+    stream.addEventListener('addtrack', onTrackChange);
+    stream.addEventListener('removetrack', onTrackChange);
+    return () => {
+      stream.removeEventListener('addtrack', onTrackChange);
+      stream.removeEventListener('removetrack', onTrackChange);
+    };
   }, [stream, isVideoOff]);
 
   return (
@@ -96,7 +123,8 @@ const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream |
       id: p.socketId,
       name: p.name,
       isMuted: p.isMuted,
-      isVideoOff: p.isVideoOff,
+      // Default to false (camera ON) — server sends the real state via media-state event
+      isVideoOff: p.isVideoOff ?? false,
       isScreenSharing: p.isScreenSharing,
       isLocal: false,
       isActive: false,

@@ -46,29 +46,56 @@ const AuthSync = () => {
   // Validate stored token on app boot — catches expired tokens before any route renders
   useEffect(() => {
     if (!isInitializing) return;
+
     authService.me()
       .then((res) => {
-        // res is ApiEnvelope<User>: { success, data: User, message }
         const user = res.data;
         if (user?.id || (user as any)?._id) {
-          // Re-read token from storage in case the refresh interceptor already
-          // swapped it out while the me() request was in-flight
           const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) ?? '';
           dispatch(setCredentials({ user, accessToken: token }));
         } else {
           dispatch(clearAuth());
         }
       })
-      .catch(() => {
-        // Token invalid/expired — axios interceptor will attempt refresh;
-        // if that also fails it fires auth:logout which clears state.
-        // We only need to mark initialization done if clearAuth wasn't dispatched.
-        dispatch(setInitialized());
+      .catch((err: any) => {
+        // me() failed — could be expired access token (interceptor will have
+        // already attempted a refresh). Check if we still have a token after
+        // the interceptor ran (meaning refresh succeeded but me() still failed
+        // for another reason), or if the token is now gone (refresh also failed).
+        const tokenAfterRefresh = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+        const refreshStatus = err?.response?.status;
+
+        if (tokenAfterRefresh && refreshStatus !== 401 && refreshStatus !== 403) {
+          // Refresh succeeded (token still present) — re-try me() once
+          authService.me()
+            .then((res) => {
+              const user = res.data;
+              if (user?.id || (user as any)?._id) {
+                dispatch(setCredentials({ user, accessToken: tokenAfterRefresh }));
+              } else {
+                dispatch(clearAuth());
+              }
+            })
+            .catch(() => dispatch(clearAuth()));
+        } else if (refreshStatus === 401 || refreshStatus === 403) {
+          // Refresh token is also invalid — session truly expired
+          dispatch(clearAuth());
+        } else {
+          // Network error or server down — keep user logged in, just mark initialized
+          dispatch(setInitialized());
+        }
       });
   }, [dispatch, isInitializing]);
 
   useEffect(() => {
-    const onRefresh = (e: Event) => dispatch(refreshAccessToken((e as CustomEvent<string>).detail));
+    const onRefresh = (e: Event) => {
+      const newToken = (e as CustomEvent<string>).detail;
+      dispatch(refreshAccessToken(newToken));
+      // Re-authenticate the socket with the new token so it doesn't drop
+      import('./utils/socket').then(({ connectSocket }) => {
+        connectSocket(newToken);
+      });
+    };
     const onLogout  = () => dispatch(clearAuth());
     window.addEventListener('auth:tokenRefreshed', onRefresh);
     window.addEventListener('auth:logout', onLogout);

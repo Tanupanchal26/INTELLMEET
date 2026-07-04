@@ -30,13 +30,20 @@ const parseStoredUser = (): User | null => {
 };
 
 const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+const storedUser  = parseStoredUser();
+
+// Consider the user authenticated on boot if we have EITHER a stored token
+// OR a stored user (the refresh cookie may still be valid even if the access
+// token has been cleared). isInitializing will gate all protected routes until
+// the server confirms the session.
+const hasStoredSession = !!storedToken || !!storedUser;
 
 const initialState: AuthState = {
-  user: parseStoredUser(),
+  user: storedUser,
   accessToken: storedToken,
-  isAuthenticated: !!storedToken,
-  // If there is a stored token we need to verify it before trusting it
-  isInitializing: !!storedToken,
+  isAuthenticated: hasStoredSession,
+  // Always initialize — verify the session against the server on every boot
+  isInitializing: hasStoredSession,
 };
 
 const authSlice = createSlice({

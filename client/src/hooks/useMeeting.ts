@@ -41,7 +41,8 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
         avatar:   data?.user?.avatar ?? data?.avatar,
         socketId: sanitize(data?.socketId),
         isMuted:    Boolean(data?.isMuted),
-        isVideoOff: Boolean(data?.isVideoOff ?? true),
+        // Default camera to ON (false = not off) — real state arrives via meeting:media-state
+        isVideoOff: data?.isVideoOff != null ? Boolean(data.isVideoOff) : false,
         isScreenSharing: Boolean(data?.isScreenSharing),
         isHost,
       });
@@ -90,8 +91,21 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       navigate(ROUTES.LOBBY);
     };
 
+    const onDashboardRefresh = () => {
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['analytics'] });
+    };
+
     const onMeetingError = ({ message }: { message: string }) => {
       toast.error(message || 'A meeting error occurred.');
+    };
+
+    // When a new participant joins, re-broadcast our media state so they see correct camera/mic
+    const onRequestMediaState = ({ socketId: _requesterId }: { socketId: string }) => {
+      const s = getSocket();
+      if (!s?.connected || !roomId) return;
+      const { isMuted: m, isVideoOff: v, isScreenSharing: ss } = useMeetingStore.getState();
+      s.emit('meeting:media-state', { roomId, isMuted: m, isVideoOff: v, isScreenSharing: ss });
     };
 
     // Re-register listeners and re-emit join after socket reconnects
@@ -112,7 +126,9 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
     socket.on('meeting:ended-by-host', onMeetingEndedByHost);
     socket.on('meeting:force-end',    onForceEnd);
     socket.on('meeting:error',        onMeetingError);
+    socket.on('meeting:request-media-state', onRequestMediaState);
     socket.on('connect',              onReconnect);
+    socket.on('dashboard:refresh',    onDashboardRefresh);
     setInCall(true);
 
     return () => {
@@ -126,7 +142,9 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       socket.off('meeting:ended-by-host', onMeetingEndedByHost);
       socket.off('meeting:force-end',    onForceEnd);
       socket.off('meeting:error',        onMeetingError);
+      socket.off('meeting:request-media-state', onRequestMediaState);
       socket.off('connect',              onReconnect);
+      socket.off('dashboard:refresh',    onDashboardRefresh);
     };
   }, [socket, roomId, addParticipant, removeParticipant, setInCall, setParticipants, appendTranscript, updateParticipant, resetMeeting, navigate, qc, setHandRaised]);
 

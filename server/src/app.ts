@@ -92,7 +92,7 @@ app.use(session({
   secret:            config.sessionSecret,
   resave:            false,
   saveUninitialized: false,
-  cookie:            { secure: true, httpOnly: true, sameSite: 'none', maxAge: 10 * 60 * 1000 },
+  cookie:            { secure: config.isProd, httpOnly: true, sameSite: config.isProd ? 'none' : 'lax', maxAge: 10 * 60 * 1000 },
 }));
 
 app.use(passport.initialize());

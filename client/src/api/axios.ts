@@ -69,11 +69,17 @@ axiosClient.interceptors.response.use(
         processQueue(null, newToken);
         original.headers = { ...(original.headers ?? {}), Authorization: `Bearer ${newToken}` };
         return axiosClient(original);
-      } catch (refreshErr) {
+      } catch (refreshErr: any) {
         processQueue(refreshErr, null);
-        localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-        localStorage.removeItem(STORAGE_KEYS.USER);
-        window.dispatchEvent(new CustomEvent('auth:logout'));
+        // Only force logout when the refresh endpoint itself returns 401/403
+        // (token truly invalid/revoked). Network errors, 5xx, etc. should NOT
+        // log the user out — they may just be temporary server issues.
+        const refreshStatus = refreshErr?.response?.status;
+        if (refreshStatus === 401 || refreshStatus === 403) {
+          localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+          localStorage.removeItem(STORAGE_KEYS.USER);
+          window.dispatchEvent(new CustomEvent('auth:logout'));
+        }
         return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;
