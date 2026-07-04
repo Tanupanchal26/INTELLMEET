@@ -108,8 +108,8 @@ export const aiService = {
   getSmartNotes: (meetingId: string) =>
     api.get<{ smartNotes: any }>(`/ai/${meetingId}/smart-notes`),
 
-  generateMinutes: (meetingId: string) =>
-    api.post<{ minutes: string }>(`/ai/${meetingId}/minutes`, {}, { timeout: 60000 }),
+  generateMinutes: (meetingId: string, transcript?: string) =>
+    api.post<{ minutes: string }>(`/ai/${meetingId}/minutes`, { transcript: transcript || ' ' }, { timeout: 60000 }),
 
   assistantChat: (meetingId: string, message: string, history: { role: string; content: string }[] = []) =>
     api.post<{ reply: string }>(`/ai/${meetingId}/assistant`, { message, context: { history } }),

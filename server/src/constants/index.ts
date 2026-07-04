@@ -124,8 +124,8 @@ export const CACHE_TTL = {
 
 // AI Models
 export const AI_MODEL = {
-  GPT4O:      'gpt-4o',
-  GPT4_TURBO: 'gpt-4-turbo',
+  GPT4O:      'gpt-4o-mini',
+  GPT4_TURBO: 'gpt-4o-mini',
   WHISPER:    'whisper-1',
 } as const;
 

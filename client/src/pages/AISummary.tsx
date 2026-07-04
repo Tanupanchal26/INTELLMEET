@@ -117,7 +117,9 @@ const AISummary = () => {
   const handleGenerateMinutes = async () => {
     if (!selectedId) return;
     try {
-      const res: any = await aiService.generateMinutes(selectedId);
+      const tRes: any = await aiService.getTranscript(selectedId);
+      const transcript: string = tRes?.data?.transcript ?? tRes?.transcript ?? '';
+      const res: any = await aiService.generateMinutes(selectedId, transcript || undefined);
       store.setMinutes(res?.data?.minutes ?? res?.minutes ?? '');
       setActiveTab('minutes');
       toast.success('Minutes generated');

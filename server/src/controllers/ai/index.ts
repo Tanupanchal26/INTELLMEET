@@ -166,15 +166,22 @@ exports.getSmartNotes = asyncHandler(async (req, res) => {
 // ── POST /ai/:meetingId/minutes ───────────────────────────────────────────────
 exports.generateMinutes = asyncHandler(async (req, res) => {
   const { transcript, title, participants, date } = req.body;
-  if (!transcript) throw ApiError.badRequest('transcript is required');
-  if (transcript.length > MAX_TRANSCRIPT)
+  if (transcript && transcript.trim() && transcript.length > MAX_TRANSCRIPT)
     throw ApiError.badRequest(`transcript exceeds ${MAX_TRANSCRIPT} character limit`);
 
-  await AIResult.findOneAndUpdate(
-    { meeting: req.params.meetingId },
-    { meeting: req.params.meetingId, transcript },
-    { upsert: true, new: true }
-  );
+  // Save transcript only if a real one was provided
+  if (transcript && transcript.trim()) {
+    await AIResult.findOneAndUpdate(
+      { meeting: req.params.meetingId },
+      { meeting: req.params.meetingId, transcript },
+      { upsert: true, new: true }
+    );
+  }
+
+  // Verify a transcript exists (either just saved or already in DB)
+  const existing = await AIResult.findOne({ meeting: req.params.meetingId }).select('transcript transcriptChunks');
+  const hasTranscript = existing?.transcript?.trim() || existing?.transcriptChunks?.length;
+  if (!hasTranscript) throw ApiError.badRequest('No transcript found. Generate or upload a transcript first.');
 
   const job = await enqueueAIJob('minutes', {
     meetingId:    req.params.meetingId,
