@@ -17,8 +17,12 @@ class TeamRepository extends BaseRepository {
   }
 
   async addMember(teamId, tenantId, userId, role = 'member', status = 'active') {
+    // Use _id-only filter when tenantId is undefined to avoid silent query failure
+    const filter = tenantId
+      ? { _id: teamId, tenantId, 'members.user': { $ne: userId } }
+      : { _id: teamId, 'members.user': { $ne: userId } };
     const team = await Team.findOneAndUpdate(
-      { _id: teamId, tenantId, 'members.user': { $ne: userId } },
+      filter,
       { $push: { members: { user: userId, role, status } } },
       { new: true }
     );

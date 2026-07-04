@@ -7,8 +7,16 @@ const User         = require('../models/User');
 const mongoose     = require('mongoose');
 
 exports.getDashboardMetrics = async (tenantId, userId) => {
-  const tid = new mongoose.Types.ObjectId(tenantId);
+  // Guard: if tenantId is missing/invalid, skip tenant-scoped queries gracefully
+  let tid;
+  try { tid = new mongoose.Types.ObjectId(tenantId); } catch { tid = null; }
   const uid = new mongoose.Types.ObjectId(userId);
+  if (!tid) {
+    return {
+      metrics: { meetingsCreated: 0, meetingsJoined: 0, totalMeetings: 0, totalMeetingHours: 0, aiSummariesGenerated: 0, tasksCompleted: 0, totalTasks: 0 },
+      recentMeetings: [], upcomingMeetings: [], taskData: [], recentActivity: [],
+    };
+  }
 
   const [
     taskData,

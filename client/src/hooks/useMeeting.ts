@@ -7,15 +7,17 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../constants';
 import { getSocket } from '../utils/socket';
+import { useQueryClient } from '@tanstack/react-query';
 
 /** Strip control characters to prevent log/XSS injection from socket payloads */
 const sanitize = (v: unknown): string =>
   // eslint-disable-next-line no-control-regex
   String(v ?? '').replace(/[\r\n\t\x00-\x1f\x7f<>"'`]/g, '_').slice(0, 256);
 
-export const useMeeting = (roomId?: string) => {
+export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
   const { socket } = useSocket();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { addParticipant, removeParticipant, setInCall, resetMeeting, updateParticipant, setParticipants } = useMeetingStore();
   const { appendTranscript } = useAIStore();
 
@@ -25,19 +27,23 @@ export const useMeeting = (roomId?: string) => {
     const onUserJoined  = (data: any) => {
       // Never add ourselves — the local tile is rendered separately
       if (data?.socketId === socket.id) return;
-      // isHost not sent in user-joined; derive from currentMeeting.host
+      // Prefer server-sent isHost; fall back to comparing against currentMeeting.host
+      // Use a getter so we always read the latest value even if currentMeeting was set
+      // after this handler was registered.
+      const userId = data?.user?.id ?? data?.id;
       const { currentMeeting } = useMeetingStore.getState();
+      const isHost = currentMeeting?.host
+        ? userId === currentMeeting.host
+        : Boolean(data?.isHost);
       addParticipant({
-        id:       sanitize(data?.user?.id   ?? data?.id),
+        id:       sanitize(userId),
         name:     sanitize(data?.user?.name ?? data?.name ?? 'Unknown'),
         avatar:   data?.user?.avatar ?? data?.avatar,
         socketId: sanitize(data?.socketId),
         isMuted:    Boolean(data?.isMuted),
         isVideoOff: Boolean(data?.isVideoOff ?? true),
         isScreenSharing: Boolean(data?.isScreenSharing),
-        isHost:   currentMeeting?.host
-          ? (data?.user?.id ?? data?.id) === currentMeeting.host
-          : Boolean(data?.isHost),
+        isHost,
       });
     };
     const onUserLeft    = ({ socketId }: any)   => removeParticipant(sanitize(socketId));
@@ -65,12 +71,16 @@ export const useMeeting = (roomId?: string) => {
     };
     const onMeetingEndedByHost = () => {
       resetMeeting();
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['meetings'] });
       toast('Meeting has ended.', { icon: '🔴', duration: 4000 });
       navigate(ROUTES.LOBBY);
     };
 
     const onForceEnd = () => {
       resetMeeting();
+      qc.invalidateQueries({ queryKey: ['dashboard'] });
+      qc.invalidateQueries({ queryKey: ['meetings'] });
       toast('Meeting has ended.', { icon: '🔴', duration: 4000 });
       navigate(ROUTES.LOBBY);
     };
@@ -108,6 +118,8 @@ export const useMeeting = (roomId?: string) => {
     // mark the meeting as ended for everyone when a participant simply leaves.
     socket?.emit('meeting:leave', roomId);
     resetMeeting();
+    qc.invalidateQueries({ queryKey: ['dashboard'] });
+    qc.invalidateQueries({ queryKey: ['meetings'] });
     toast('You left the meeting', { icon: '👋' });
     navigate(ROUTES.LOBBY);
   };

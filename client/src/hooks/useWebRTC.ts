@@ -160,11 +160,11 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   useEffect(() => {
     let isMounted = true;
     const initMedia = async () => {
-      // Try camera+mic first; only fall back to audio-only if it fails
+      // Use minimal constraints for fastest acquisition — no ideal negotiation delay
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+          video: true,
         });
         if (!isMounted) { stream.getTracks().forEach(t => t.stop()); return; }
         stream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });

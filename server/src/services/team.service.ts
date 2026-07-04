@@ -86,6 +86,7 @@ const inviteMemberByEmail = async (teamId, tenantId, actorId, email, role = 'mem
   const team = await teamRepo.findById(teamId, tenantId);
   assertTeamRole(team, actorId, 'admin');
 
+  // Search without tenantId filter so cross-tenant users can be found by email
   const targetUser = await User.findOne({ email: email.toLowerCase() });
   if (!targetUser) throw ApiError.notFound('No registered user found with this email');
 
@@ -95,6 +96,7 @@ const inviteMemberByEmail = async (teamId, tenantId, actorId, email, role = 'mem
     throw ApiError.conflict('User is already a member of this team');
   }
 
+  // Use $or to handle undefined tenantId in addMember query
   const updated = await teamRepo.addMember(teamId, tenantId, targetUser._id, role, 'pending');
   notifService.notifyTeamInvite(team, targetUser._id, actorId).catch(() => {});
   return updated;

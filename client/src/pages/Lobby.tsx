@@ -28,7 +28,7 @@ const Lobby = () => {
   const [startMeetingId, setStartMeetingId] = useState('');
   const [title, setTitle] = useState('');
   const [joinId, setJoinId] = useState(searchParams.get('join') ?? '');
-  const [copied, setCopied] = useState<'id' | 'code' | 'link' | null>(null);
+  const [copied, setCopied] = useState<'id' | 'code' | 'link' | 'all' | null>(null);
   const qc = useQueryClient();
   const user = useAppSelector((state: any) => state.auth.user);
 
@@ -276,6 +276,24 @@ const Lobby = () => {
               <div className="flex gap-3">
                 <Button variant="secondary" className="flex-1" onClick={() => { setShowCreate(false); setCreatedMeeting(null); }}>
                   Close
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="gap-1.5"
+                  onClick={() => {
+                    const parts = [
+                      `Meeting ID: ${createdMeeting.meetingId}`,
+                      `Join Code: ${createdMeeting.joinCode}`,
+                      createdMeeting.joinLink ? `Join Link: ${createdMeeting.joinLink}` : '',
+                    ].filter(Boolean).join('\n');
+                    navigator.clipboard.writeText(parts).then(() => {
+                      setCopied('all');
+                      setTimeout(() => setCopied(null), 2000);
+                    });
+                  }}
+                >
+                  {copied === 'all' ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
+                  {copied === 'all' ? 'Copied!' : 'Copy All'}
                 </Button>
                 <Button className="flex-1 gap-2" onClick={handleJoinCreated}>
                   <Video size={14} /> Join Now

@@ -306,8 +306,19 @@ export const endMeeting = async (
   if (meeting.host.toString() !== userId.toString() && !isAdmin) {
     throw ApiError.forbidden('Only the host can end this meeting');
   }
+  // Allow ending both active and scheduled meetings (host may end before starting)
+  if (meeting.status === MEETING_STATUS.ENDED) {
+    throw ApiError.badRequest('This meeting has already ended');
+  }
+
+  // If still scheduled, mark it directly without computing duration
   if (meeting.status !== MEETING_STATUS.ACTIVE) {
-    throw ApiError.badRequest('Only an active meeting can be ended');
+    const Meeting = require('../models/Meeting');
+    return Meeting.findByIdAndUpdate(
+      meetingId,
+      { $set: { status: MEETING_STATUS.ENDED, endedAt: new Date(), duration: 0 } },
+      { new: true }
+    );
   }
 
   return meetingRepo.endMeeting(meetingId, tenantId);
@@ -329,8 +340,19 @@ export const upsertMeetingNote = async (
   userId:    UserId,
   data:      Record<string, unknown>
 ) => {
-  await getMeeting(meetingId, tenantId, userId); // access check
-  return meetingNoteRepo.upsert(meetingId, tenantId, userId, data);
+  // Access check: find by _id without tenantId filter to avoid undefined-tenantId 404
+  const Meeting = require('../models/Meeting');
+  const meeting = await Meeting.findById(meetingId);
+  if (!meeting) throw ApiError.notFound('Meeting not found');
+  const uid = userId.toString();
+  const isMember =
+    meeting.host.toString() === uid ||
+    meeting.participants.some((p: { toString(): string }) => p.toString() === uid);
+  if (!isMember) throw ApiError.forbidden('You are not a participant of this meeting');
+
+  // Strip protected fields before upsert
+  const { meeting: _m, createdBy: _c, ...safeData } = data as any;
+  return meetingNoteRepo.upsert(meetingId, tenantId, userId, safeData);
 };
 
 // ── Join by meetingId, joinCode, or roomId ────────────────────────────────────

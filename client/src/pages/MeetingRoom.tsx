@@ -171,7 +171,7 @@ const MeetingRoom = () => {
   
   useTranscription(id ?? '');
 
-  // Auto-start recording when meeting starts, auto-stop when component unmounts
+  // Auto-start recording when localStream is ready
   const { startRecording, stopRecording, switchSource } = useRecording(id ?? '', localStream, screenStreamRef);
   const recordingStartedRef = useRef(false);
 
@@ -179,26 +179,27 @@ const MeetingRoom = () => {
     if (!localStream || recordingStartedRef.current) return;
     recordingStartedRef.current = true;
     startRecording();
-    return () => { stopRecording(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localStream]);
 
   // Switch recording source when screen sharing starts/stops
   const prevScreenSharing = useRef(false);
+  const isScreenSharing = useMeetingStore((s) => s.isScreenSharing);
   useEffect(() => {
     if (!recordingStartedRef.current) return;
-    const { isScreenSharing } = useMeetingStore.getState();
-    if (isScreenSharing && !prevScreenSharing.current) {
+    if (isScreenSharing === prevScreenSharing.current) return;
+    prevScreenSharing.current = isScreenSharing;
+    if (isScreenSharing) {
       const tracks = [
         ...(screenStreamRef?.current?.getVideoTracks() ?? []),
         ...(localStream?.getAudioTracks() ?? []),
       ];
       if (tracks.length) switchSource(new MediaStream(tracks));
-    } else if (!isScreenSharing && prevScreenSharing.current && localStream) {
+    } else if (localStream) {
       switchSource(localStream);
     }
-    prevScreenSharing.current = isScreenSharing;
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScreenSharing]);
 
   // Start meeting on mount, fetch real title + roomId, clean up on leave
   useEffect(() => {
