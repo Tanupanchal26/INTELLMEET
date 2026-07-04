@@ -34,7 +34,7 @@ export const getClient = (): any => {
 // Returns the raw text string from Gemini so callers don't touch the SDK directly.
 export const generate = async (
   prompt: string,
-  model = 'gemini-2.0-flash',
+  model = 'gemini-1.5-flash-8b',
 ): Promise<string> => {
   const client = getClient();
 
