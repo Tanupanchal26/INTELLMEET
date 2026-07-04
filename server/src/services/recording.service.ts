@@ -65,8 +65,11 @@ exports.stopRecording = async (recordingId, tenantId) => {
   return recording;
 };
 
-exports.getRecordings = async (tenantId, ownerId) =>
-  Recording.find({ tenantId, ownerId }).sort({ createdAt: -1 }).populate('meetingId', 'title');
+exports.getRecordings = async (tenantId, ownerId) => {
+  const filter: any = { ownerId };
+  if (tenantId) filter.tenantId = tenantId;
+  return Recording.find(filter).sort({ createdAt: -1 }).populate('meetingId', 'title');
+};
 
 exports.getRecording = async (recordingId, tenantId, ownerId) => {
   const recording = await Recording.findOne({ _id: recordingId, tenantId, ownerId })

@@ -37,7 +37,8 @@ export default function Recordings() {
     try {
       setLoading(true);
       const res: any = await recordingService.getRecordings();
-      setRecordings(res?.data ?? res ?? []);
+      const list = res?.data ?? res ?? [];
+      setRecordings(Array.isArray(list) ? list : []);
     } catch {
       toast.error('Failed to load recordings');
     } finally {
