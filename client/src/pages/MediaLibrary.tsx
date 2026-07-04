@@ -23,8 +23,9 @@ export default function MediaLibrary() {
   const fetchMedia = async () => {
     try {
       setLoading(true);
-      const res = await mediaService.getMedia();
-      setMediaList(res.data);
+      const res: any = await mediaService.getMedia();
+      const list = res?.data ?? res ?? [];
+      setMediaList(Array.isArray(list) ? list : []);
     } catch (err: any) {
       toast.error(err.message || 'Failed to load media');
     } finally {
@@ -47,9 +48,9 @@ export default function MediaLibrary() {
 
     try {
       setUploading(true);
-      const res = await mediaService.uploadMedia(file);
+      await mediaService.uploadMedia(file);
       toast.success('Media uploaded successfully!');
-      setMediaList([res.data, ...mediaList]);
+      await fetchMedia();
     } catch (err: any) {
       toast.error(err.message || 'Upload failed');
     } finally {

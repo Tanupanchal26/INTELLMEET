@@ -2,7 +2,7 @@
 const mongoose = require('mongoose');
 
 const mediaSchema = new mongoose.Schema({
-  tenantId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true, index: true },
+  tenantId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: false, default: null, index: true },
   uploadedBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   url:          { type: String, required: true },
   publicId:     { type: String, required: true },

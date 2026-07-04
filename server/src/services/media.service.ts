@@ -32,12 +32,10 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 exports.uploadMedia = async (file, tenantId, userId) => {
   if (!file) throw ApiError.badRequest('No file provided');
 
-  // Strict file size check
   if (file.size > MAX_FILE_SIZE) {
     throw ApiError.badRequest('File size exceeds the 10MB limit');
   }
 
-  // Strict file type check
   const resourceType = ALLOWED_TYPES[file.mimetype];
   if (!resourceType) {
     throw ApiError.badRequest(`File type '${file.mimetype}' is not supported`);
@@ -46,9 +44,10 @@ exports.uploadMedia = async (file, tenantId, userId) => {
   logger.info(`[MEDIA SERVICE] Starting upload for user: ${userId}, size: ${file.size} bytes`);
 
   return new Promise((resolve, reject) => {
+    const folderPath = tenantId ? `intellmeet/media/${tenantId}` : `intellmeet/media/shared`;
     const uploadStream = cloudinary.uploader.upload_stream(
       {
-        folder: `intellmeet/media/${tenantId}`,
+        folder: folderPath,
         resource_type: resourceType,
         filename_override: file.originalname,
         use_filename: true,
@@ -56,13 +55,11 @@ exports.uploadMedia = async (file, tenantId, userId) => {
       async (error, result) => {
         if (error) {
           logger.error(`[MEDIA SERVICE] Cloudinary upload failed: ${error.message}`);
-          return reject(new ApiError(500, 'Cloudinary upload failed'));
+          return reject(new ApiError(500, `Cloudinary upload failed: ${error.message}`));
         }
 
         try {
-          // Store reference in database
-          const media = await Media.create({
-            tenantId,
+          const mediaDoc: any = {
             uploadedBy: userId,
             url: result.secure_url,
             publicId: result.public_id,
@@ -70,25 +67,23 @@ exports.uploadMedia = async (file, tenantId, userId) => {
             fileSize: file.size,
             fileType: file.mimetype,
             resourceType,
-          });
+          };
+          if (tenantId) mediaDoc.tenantId = tenantId;
 
+          const media = await Media.create(mediaDoc);
           logger.info(`[MEDIA SERVICE] Successfully uploaded and recorded: ${media._id}`);
           resolve(media);
         } catch (dbErr) {
           logger.error(`[MEDIA SERVICE] Database save failed: ${dbErr.message}`);
-          
-          // Clean up Cloudinary asset if DB save fails
           try {
             await cloudinary.uploader.destroy(result.public_id, { resource_type: resourceType });
           } catch (delErr) {
-            logger.error(`[MEDIA SERVICE] Rollback cleanup failed for publicId ${result.public_id}: ${delErr.message}`);
+            logger.error(`[MEDIA SERVICE] Rollback cleanup failed: ${delErr.message}`);
           }
-
-          reject(new ApiError(500, 'Database recording failed'));
+          reject(new ApiError(500, `Database recording failed: ${dbErr.message}`));
         }
       }
     );
-
     uploadStream.end(file.buffer);
   });
 };
