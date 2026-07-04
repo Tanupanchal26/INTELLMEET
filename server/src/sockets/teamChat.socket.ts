@@ -3,6 +3,8 @@ const teamChatRepo = require('../repositories/teamChat.repository');
 const teamRepo     = require('../repositories/team.repository');
 const logger = require('../shared/utils/logger').default;
 
+const sanitizeLog = (val) => String(val ?? '').replace(/[\r\n\t\x00-\x1f\x7f]/g, '_');
+
 const teamChatSocket = (io, socket) => {
   const userId = socket.user?.id;
   const tenantId = socket.user?.tenantId;
@@ -17,8 +19,7 @@ const teamChatSocket = (io, socket) => {
       if (!role) throw new Error('Not a member');
 
       socket.join(getTeamRoom(teamId));
-      logger.info(`User ${userId} joined team chat ${teamId}`);
-    } catch (error) {
+      logger.info(`User ${sanitizeLog(userId)} joined team chat ${sanitizeLog(teamId)}`);    } catch (error) {
       socket.emit('team-chat:error', { message: error.message || 'Failed to join team chat' });
     }
   });

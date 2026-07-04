@@ -1,18 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useMeetingStore } from '../store/meeting/meeting.store';
 import { getSocket } from '../utils/socket';
+import { RTC_CONFIG } from '../utils/webrtc';
 import toast from 'react-hot-toast';
 
 interface WebRTCConfig { roomId: string; userId: string; }
-
-const ICE_SERVERS: RTCConfiguration = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-  ],
-  iceCandidatePoolSize: 10,
-};
 
 export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   const localStreamRef   = useRef<MediaStream | null>(null);
@@ -84,7 +76,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     // Guard: never create duplicate connections
     if (peersRef.current.has(remoteSocketId)) return peersRef.current.get(remoteSocketId)!;
 
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    const pc = new RTCPeerConnection(RTC_CONFIG);
     peersRef.current.set(remoteSocketId, pc);
 
     // Suppress onnegotiationneeded — we manage offer/answer manually
@@ -168,32 +160,24 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   useEffect(() => {
     let isMounted = true;
     const initMedia = async () => {
-      // Race camera+mic and audio-only in parallel for fastest startup
-      const [camMicResult, audioResult] = await Promise.allSettled([
-        navigator.mediaDevices.getUserMedia({ audio: true, video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } }),
-        navigator.mediaDevices.getUserMedia({ audio: true, video: false }),
-      ]);
-
-      if (!isMounted) {
-        if (camMicResult.status === 'fulfilled') camMicResult.value.getTracks().forEach(t => t.stop());
-        if (audioResult.status === 'fulfilled') audioResult.value.getTracks().forEach(t => t.stop());
-        return;
-      }
-
-      if (camMicResult.status === 'fulfilled') {
-        // Stop the audio-only stream since we have camera+mic
-        if (audioResult.status === 'fulfilled') audioResult.value.getTracks().forEach(t => t.stop());
-        const stream = camMicResult.value;
+      // Try camera+mic first; only fall back to audio-only if it fails
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        });
+        if (!isMounted) { stream.getTracks().forEach(t => t.stop()); return; }
         stream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
         localStreamRef.current = stream;
         mediaReadyRef.current = true;
         setIsMediaReady(true);
         setLocalStream(new MediaStream(stream.getTracks()));
         return;
-      }
+      } catch { /* camera unavailable — try audio-only */ }
 
-      if (audioResult.status === 'fulfilled') {
-        const stream = audioResult.value;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        if (!isMounted) { stream.getTracks().forEach(t => t.stop()); return; }
         stream.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
         localStreamRef.current = stream;
         mediaReadyRef.current = true;
@@ -201,9 +185,8 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         setLocalStream(new MediaStream(stream.getTracks()));
         toast('No camera found — joined with audio only', { icon: '🎤' });
         return;
-      }
+      } catch { /* mic also unavailable */ }
 
-      // All failed
       if (isMounted) {
         mediaReadyRef.current = true;
         setIsMediaReady(true);
