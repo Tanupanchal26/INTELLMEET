@@ -23,15 +23,8 @@ exports.googleCallback = async (req, res) => {
       path:     '/',
     });
 
-    res.cookie('__oauth_token', accessToken, {
-      httpOnly: false,
-      secure:   true,          // must be true when sameSite is 'none'
-      sameSite: 'none',        // required for cross-origin Netlify → Render redirect
-      maxAge:   60 * 1000,
-      path:     '/',
-    });
-
-    return res.redirect(`${config.clientUrl}/auth/google/success`);
+    // Pass access token via URL param — cross-origin cookies are blocked by browsers
+    return res.redirect(`${config.clientUrl}/auth/google/success?token=${encodeURIComponent(accessToken)}`);
   } catch (err) {
     const logger = require('../../shared/utils/logger').default;
     logger.error('[Google OAuth] callback error', { message: err.message, stack: err.stack });

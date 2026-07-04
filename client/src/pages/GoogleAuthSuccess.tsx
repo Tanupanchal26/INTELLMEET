@@ -6,17 +6,6 @@ import toast from 'react-hot-toast';
 import { ROUTES, STORAGE_KEYS } from '../constants';
 import { authService } from '../api/auth.api';
 
-const OAUTH_COOKIE_NAME = '__oauth_token';
-
-const readCookie = (name: string): string | null => {
-  const match = document.cookie.match(new RegExp(`(^| )${name}=([^;]+)`));
-  return match ? decodeURIComponent(match[2]) : null;
-};
-
-const clearCookie = (name: string): void => {
-  document.cookie = `${name}=; Max-Age=0; path=/`;
-};
-
 const GoogleAuthSuccess = () => {
   const dispatch  = useAppDispatch();
   const navigate  = useNavigate();
@@ -27,10 +16,12 @@ const GoogleAuthSuccess = () => {
     if (handled.current) return;
     handled.current = true;
 
-    const accessToken = readCookie(OAUTH_COOKIE_NAME);
+    const params = new URLSearchParams(window.location.search);
+    const accessToken = params.get('token');
 
     if (accessToken) {
-      clearCookie(OAUTH_COOKIE_NAME);
+      // Remove token from URL immediately
+      window.history.replaceState({}, '', window.location.pathname);
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
 
       authService.me()
