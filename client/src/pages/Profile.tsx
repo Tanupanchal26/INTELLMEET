@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector, useAppDispatch } from '../hooks/useAppDispatch';
 import { setCredentials } from '../store/auth/auth.slice';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
-import { Save, Video, Brain, CheckSquare, LogOut } from 'lucide-react';
+import { Save, Video, Brain, CheckSquare, LogOut, Camera, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { clearAuth } from '../store/auth/auth.slice';
 import { authService } from '../api/auth.api';
@@ -18,6 +18,32 @@ const Profile = () => {
   const user = useAppSelector((s) => s.auth.user);
   const [name, setName] = useState(user?.name || '');
   const [saving, setSaving] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 8 * 1024 * 1024) { toast.error('Image must be under 8 MB'); return; }
+    const formData = new FormData();
+    formData.append('avatar', file);
+    setAvatarUploading(true);
+    try {
+      const res = await api.post('/users/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }) as any;
+      const updated = res?.data?.user ?? res?.user ?? res?.data ?? res;
+      const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) ?? '';
+      dispatch(setCredentials({ user: { ...user, ...updated }, accessToken: token }));
+      toast.success('Avatar updated!');
+    } catch (err: any) {
+      toast.error(err?.message ?? 'Failed to upload avatar');
+    } finally {
+      setAvatarUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const STATS = [
     { label: 'Meetings', value: '28', icon: Video, color: 'text-[var(--color-primary)]', bg: 'bg-[var(--color-primary)]/10' },
@@ -56,8 +82,31 @@ const Profile = () => {
       </div>
 
       <Card className="flex items-center gap-5">
-        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-purple-500 flex items-center justify-center text-white text-3xl font-bold flex-shrink-0">
-          {(user?.name || 'U').charAt(0).toUpperCase()}
+        <div className="relative flex-shrink-0">
+          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[var(--color-primary)] to-purple-500 flex items-center justify-center text-white text-3xl font-bold overflow-hidden">
+            {user?.avatar
+              ? <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+              : (user?.name || 'U').charAt(0).toUpperCase()
+            }
+          </div>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={avatarUploading}
+            className="absolute -bottom-1.5 -right-1.5 w-7 h-7 rounded-full bg-[var(--color-primary)] border-2 border-[var(--color-surface)] flex items-center justify-center hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-60"
+            title="Change avatar"
+          >
+            {avatarUploading
+              ? <Loader2 size={12} className="text-white animate-spin" />
+              : <Camera size={12} className="text-white" />
+            }
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleAvatarChange}
+          />
         </div>
         <div>
           <h2 className="text-xl font-bold text-[var(--color-text)]">{user?.name}</h2>
@@ -97,7 +146,8 @@ const Profile = () => {
               try {
                 const res = (await api.put('/users/me', { name: name.trim() })) as any;
                 const updated = res?.data?.user ?? res?.user ?? res?.data ?? res;
-                dispatch(setCredentials({ user: { ...user, ...updated }, accessToken: undefined as any }));
+                const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) ?? '';
+                dispatch(setCredentials({ user: { ...user, ...updated }, accessToken: token }));
                 toast.success('Profile updated!');
               } catch (err: any) {
                 toast.error(err?.message ?? 'Failed to update profile');

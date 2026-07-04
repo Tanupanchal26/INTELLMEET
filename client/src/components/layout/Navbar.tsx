@@ -44,10 +44,13 @@ const TopBar = ({ title }: Props) => {
 
         <button
           onClick={() => navigate(ROUTES.SETTINGS + '?tab=profile')}
-          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-white text-sm font-bold bg-[var(--color-primary)] shadow-sm transition-all hover:ring-4 hover:ring-[var(--color-primary)]/10 active:scale-95 cursor-pointer border border-[var(--color-border)]"
+          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-white text-sm font-bold bg-[var(--color-primary)] shadow-sm transition-all hover:ring-4 hover:ring-[var(--color-primary)]/10 active:scale-95 cursor-pointer border border-[var(--color-border)] overflow-hidden"
           aria-label={`View profile for ${user?.name ?? 'User'}`}
         >
-          <span aria-hidden="true">{initial}</span>
+          {user?.avatar
+            ? <img src={user.avatar} alt={user.name ?? 'User'} className="w-full h-full object-cover" />
+            : <span aria-hidden="true">{initial}</span>
+          }
         </button>
 
         <button
