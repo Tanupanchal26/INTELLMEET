@@ -1,6 +1,5 @@
-import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Circle, StopCircle, PhoneOff, Hand, Smile, LogOut, XOctagon } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Monitor, MonitorOff, Circle, StopCircle, PhoneOff, Hand, Smile, XOctagon } from 'lucide-react';
 import { useMeetingStore } from '../../store/meeting/meeting.store';
-import { useMeeting } from '../../hooks/useMeeting';
 import { useRecording } from '../../hooks/useRecording';
 import { getSocket } from '../../utils/socket';
 import { useAppSelector } from '../../hooks/useAppDispatch';
@@ -50,20 +49,21 @@ interface ControlsProps {
   startScreenShare?: () => Promise<void>;
   stopScreenShare?: () => void;
   stopAllTracks?: () => void;
+  leaveMeeting: (meetingId?: string) => Promise<void>;
+  endMeeting: (meetingId: string) => Promise<void>;
 }
 
-const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks }: ControlsProps) => {
+const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks, leaveMeeting, endMeeting }: ControlsProps) => {
   const { id: meetingId } = useParams();
   const user = useAppSelector((s) => s.auth.user);
   const {
     isMuted, isVideoOff, isScreenSharing, isRecording,
     toggleMute, toggleVideo,
-    currentMeeting,
+    currentMeeting, setHandRaised,
   } = useMeetingStore();
-  const isHost = currentMeeting?.host === user?.id || currentMeeting?.host?._id === user?.id;
-  const { leaveMeeting, endMeeting } = useMeeting(currentMeeting?.roomId);
+  const isHost = currentMeeting?.host === user?.id || (currentMeeting?.host as any)?._id === user?.id;
   const { startRecording, stopRecording } = useRecording(meetingId ?? '', localStream ?? null, screenStreamRef);
-  const [handRaised, setHandRaised]   = useState(false);
+  const [handRaised, setHandRaisedLocal] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
 
   const handleMic = () => {
@@ -93,11 +93,13 @@ const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenSh
 
   const handleRaiseHand = () => {
     const next = !handRaised;
-    setHandRaised(next);
+    setHandRaisedLocal(next);
     const socket = getSocket();
     if (socket?.connected && meetingId) {
-      socket.emit('meeting:raise-hand', { roomId: meetingId, raised: next });
+      socket.emit('meeting:raise-hand', { roomId: meetingId, raised: next, socketId: socket.id });
     }
+    // Update local store so ParticipantList reflects immediately
+    if (socket?.id) setHandRaised(socket.id, next);
     toast(next ? '✋ Hand raised' : '✋ Hand lowered', { duration: 2000 });
   };
 

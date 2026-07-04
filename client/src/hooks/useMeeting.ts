@@ -18,7 +18,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
   const { socket } = useSocket();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { addParticipant, removeParticipant, setInCall, resetMeeting, updateParticipant, setParticipants } = useMeetingStore();
+  const { addParticipant, removeParticipant, setInCall, resetMeeting, updateParticipant, setParticipants, setHandRaised } = useMeetingStore();
   const { appendTranscript } = useAIStore();
 
   useEffect(() => {
@@ -54,7 +54,12 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
         isVideoOff:      Boolean(isVideoOff),
         isScreenSharing: Boolean(isScreenSharing),
       });
-    const onRaiseHand   = (_data: any) => { /* visual-only; no store mutation needed */ };
+    const onRaiseHand   = ({ socketId, raised }: any) => {
+      setHandRaised(sanitize(socketId), Boolean(raised));
+      updateParticipant(sanitize(socketId), { handRaised: Boolean(raised) });
+    };
+    const onSpeaking    = ({ socketId, isSpeaking }: any) =>
+      updateParticipant(sanitize(socketId), { isSpeaking: Boolean(isSpeaking) });
     const onParticipantsList = (list: any[]) => {
       // Filter out our own socket — the local tile is rendered separately
       const others = (list ?? []).filter(p => p.socketId !== socket.id);
@@ -102,6 +107,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
     socket.on('ai:transcript',        onTranscript);
     socket.on('meeting:media-state',  onMediaState);
     socket.on('meeting:raise-hand',   onRaiseHand);
+    socket.on('meeting:speaking',     onSpeaking);
     socket.on('meeting:participants-list', onParticipantsList);
     socket.on('meeting:ended-by-host', onMeetingEndedByHost);
     socket.on('meeting:force-end',    onForceEnd);
@@ -115,13 +121,14 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       socket.off('ai:transcript',        onTranscript);
       socket.off('meeting:media-state',  onMediaState);
       socket.off('meeting:raise-hand',   onRaiseHand);
+      socket.off('meeting:speaking',     onSpeaking);
       socket.off('meeting:participants-list', onParticipantsList);
       socket.off('meeting:ended-by-host', onMeetingEndedByHost);
       socket.off('meeting:force-end',    onForceEnd);
       socket.off('meeting:error',        onMeetingError);
       socket.off('connect',              onReconnect);
     };
-  }, [socket, roomId, addParticipant, removeParticipant, setInCall, setParticipants, appendTranscript, updateParticipant, resetMeeting, navigate, qc]);
+  }, [socket, roomId, addParticipant, removeParticipant, setInCall, setParticipants, appendTranscript, updateParticipant, resetMeeting, navigate, qc, setHandRaised]);
 
   const leaveMeeting = async (_meetingId?: string) => {
     // Only leave the socket room — do NOT call meetingService.end() which would

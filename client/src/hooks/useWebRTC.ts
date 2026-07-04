@@ -23,7 +23,51 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   // Track whether we are the initiator for each peer (for ICE restart)
   const initiatorMap = useRef<Map<string, boolean>>(new Map());
 
-  const { isVideoOff, isMuted, setScreenSharing } = useMeetingStore();
+  const { isVideoOff, isMuted, setScreenSharing, setLocalSpeaking } = useMeetingStore();
+
+  // ── Voice Activity Detection ──────────────────────────────────────────────
+  const vadRef = useRef<{ ctx: AudioContext; analyser: AnalyserNode; source: MediaStreamAudioSourceNode; interval: ReturnType<typeof setInterval> } | null>(null);
+  const speakingRef = useRef(false);
+
+  const startVAD = useCallback((stream: MediaStream) => {
+    try {
+      const ctx = new AudioContext();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const interval = setInterval(() => {
+        const { isMuted: muted } = useMeetingStore.getState();
+        if (muted) {
+          if (speakingRef.current) {
+            speakingRef.current = false;
+            setLocalSpeaking(false);
+            getSocket()?.emit('meeting:speaking', { roomId, isSpeaking: false });
+          }
+          return;
+        }
+        analyser.getByteFrequencyData(data);
+        const avg = data.reduce((a, b) => a + b, 0) / data.length;
+        const speaking = avg > 12;
+        if (speaking !== speakingRef.current) {
+          speakingRef.current = speaking;
+          setLocalSpeaking(speaking);
+          getSocket()?.emit('meeting:speaking', { roomId, isSpeaking: speaking });
+        }
+      }, 150);
+      vadRef.current = { ctx, analyser, source, interval };
+    } catch { /* AudioContext not available */ }
+  }, [roomId, setLocalSpeaking]);
+
+  const stopVAD = useCallback(() => {
+    if (!vadRef.current) return;
+    clearInterval(vadRef.current.interval);
+    vadRef.current.source.disconnect();
+    vadRef.current.ctx.close().catch(() => {});
+    vadRef.current = null;
+    speakingRef.current = false;
+  }, []);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -196,6 +240,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         mediaReadyRef.current  = true;
         setIsMediaReady(true);
         setLocalStream(new MediaStream(stream.getTracks()));
+        startVAD(stream);
         return;
       } catch { /* camera unavailable */ }
 
@@ -208,6 +253,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         mediaReadyRef.current  = true;
         setIsMediaReady(true);
         setLocalStream(new MediaStream(stream.getTracks()));
+        startVAD(stream);
         toast('No camera found — joined with audio only', { icon: '🎤' });
         return;
       } catch { /* mic also unavailable */ }
@@ -226,6 +272,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       cancelled = true;
       localStreamRef.current?.getTracks().forEach(t => t.stop());
       screenStreamRef.current?.getTracks().forEach(t => t.stop());
+      stopVAD();
       peersRef.current.forEach(pc => {
         pc.onicecandidate = null;
         pc.ontrack = null;
@@ -239,7 +286,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       mediaReadyRef.current = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once — isMuted initial value captured intentionally
+  }, []); // run once — isMuted initial value captured intentionally, startVAD/stopVAD are stable
 
   // ── Socket signaling ──────────────────────────────────────────────────────
   // Re-runs when roomId changes or media becomes ready.
@@ -466,8 +513,9 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   const stopAllTracks = useCallback(() => {
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
+    stopVAD();
     peersRef.current.forEach((_, id) => closePeerConnection(id));
-  }, [closePeerConnection]);
+  }, [closePeerConnection, stopVAD]);
 
   return {
     localStreamRef,

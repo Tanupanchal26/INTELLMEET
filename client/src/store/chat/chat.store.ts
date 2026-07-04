@@ -26,6 +26,7 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   type?: 'text' | 'system';
+  readBy?: string[]; // socketIds that have read this message
 }
 
 interface ChatState {
@@ -35,6 +36,7 @@ interface ChatState {
   addMessage:  (msg: ChatMessage) => void;
   setMessages: (msgs: ChatMessage[]) => void;
   setTyping:   (name: string, isTyping: boolean) => void;
+  markRead:    (msgId: string, socketId: string) => void;
   clearChat:   () => void;
 
   // ── Channel chat ────────────────────────────────────────────────────────────
@@ -63,12 +65,23 @@ export const useChatStore = create<ChatState>((set) => ({
   // ── Meeting chat defaults ───────────────────────────────────────────────────
   messages:    [],
   typingUsers: [],
-  addMessage:  (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+  addMessage:  (msg) => set((s) => {
+    // Deduplicate by id
+    if (s.messages.some(m => m.id === msg.id)) return s;
+    return { messages: [...s.messages, msg] };
+  }),
   setMessages: (msgs) => set({ messages: msgs }),
   setTyping:   (name, isTyping) => set((s) => ({
     typingUsers: isTyping
       ? [...new Set([...s.typingUsers, name])]
       : s.typingUsers.filter((u) => u !== name),
+  })),
+  markRead: (msgId, socketId) => set((s) => ({
+    messages: s.messages.map(m =>
+      m.id === msgId
+        ? { ...m, readBy: [...new Set([...(m.readBy ?? []), socketId])] }
+        : m
+    ),
   })),
   clearChat: () => set({ messages: [], typingUsers: [] }),
 

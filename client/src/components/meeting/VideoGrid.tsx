@@ -4,8 +4,8 @@ import { useMeetingStore } from '../../store/meeting/meeting.store';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { clsx } from 'clsx';
 
-const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLocal, isHost, stream, isSingle }: {
-  name: string; isMuted: boolean; isVideoOff: boolean; isScreenSharing?: boolean; isActive?: boolean; isLocal?: boolean; isHost?: boolean; stream?: MediaStream | null; isSingle?: boolean;
+const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLocal, isHost, stream, isSingle, isSpeaking }: {
+  name: string; isMuted: boolean; isVideoOff: boolean; isScreenSharing?: boolean; isActive?: boolean; isLocal?: boolean; isHost?: boolean; stream?: MediaStream | null; isSingle?: boolean; isSpeaking?: boolean;
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -24,11 +24,13 @@ const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLoc
       className={clsx(
         'video-tile relative flex items-center justify-center rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 to-slate-950 transition-all duration-300 shadow-xl h-full w-full group',
         !isSingle && 'aspect-video',
-        isActive
+        isSpeaking
+          ? 'ring-2 ring-green-400 ring-offset-2 ring-offset-[var(--color-bg)]'
+          : isActive
           ? 'ring-2 ring-[var(--color-primary)] ring-offset-2 ring-offset-[var(--color-bg)]'
           : 'ring-1 ring-white/10'
       )}
-      aria-label={`${name}${isLocal ? ' (You)' : ''} — ${isMuted ? 'muted' : 'unmuted'}${isVideoOff ? ', video off' : ''}`}
+      aria-label={`${name}${isLocal ? ' (You)' : ''} — ${isMuted ? 'muted' : 'unmuted'}${isVideoOff ? ', video off' : ''}${isSpeaking ? ', speaking' : ''}`}
     >
       {stream && !isVideoOff ? (
         <video
@@ -81,7 +83,7 @@ const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLoc
 };
 
 const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream | null; remoteStreams?: Map<string, MediaStream> }) => {
-  const { participants, isVideoOff, isMuted, isScreenSharing, currentMeeting } = useMeetingStore();
+  const { participants, isVideoOff, isMuted, isScreenSharing, currentMeeting, isSpeaking } = useMeetingStore();
   const user = useAppSelector((s) => s.auth.user);
   const isHostUser = user?.id === currentMeeting?.host;
 
@@ -89,7 +91,7 @@ const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream |
   const remoteParticipants = participants;
 
   const allTiles = [
-    { id: 'local', name: user?.name || 'You', isMuted, isVideoOff, isScreenSharing, isLocal: true, isActive: true, isHost: isHostUser, stream: localStream },
+    { id: 'local', name: user?.name || 'You', isMuted, isVideoOff, isScreenSharing, isLocal: true, isActive: true, isHost: isHostUser, stream: localStream, isSpeaking },
     ...remoteParticipants.map(p => ({
       id: p.socketId,
       name: p.name,
@@ -100,6 +102,7 @@ const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream |
       isActive: false,
       isHost: p.isHost,
       stream: remoteStreams?.get(p.socketId) || null,
+      isSpeaking: p.isSpeaking ?? false,
     })),
   ];
   

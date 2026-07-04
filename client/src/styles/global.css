@@ -461,3 +461,38 @@ select:focus-visible {
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* TYPING INDICATOR DOTS */
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-text-dim);
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%            { transform: translateY(-5px); opacity: 1; }
+}
+
+/* RECORDING BLINK */
+@keyframes record-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}
+.animate-record { animation: record-blink 1.2s ease-in-out infinite; }
+
+/* STATUS DOT */
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.status-dot--online  { background: #22c55e; }
+.status-dot--away    { background: #f59e0b; }
+.status-dot--busy    { background: #ef4444; }
+.status-dot--offline { background: #6b7280; }
