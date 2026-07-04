@@ -169,20 +169,20 @@ export const TeamChatView = ({ teamId, teamName }: TeamChatViewProps) => {
   let lastDate = '';
 
   return (
-    <div className="flex flex-col flex-1 h-full min-h-0 bg-[var(--color-bg)]/10">
+    <div className="flex flex-col flex-1 h-full min-h-0 bg-white">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-[var(--color-border)] bg-[var(--color-bg-secondary)]/20 flex items-center gap-3 flex-shrink-0">
-        <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+      <div className="px-5 py-3 border-b border-[#e0e0e0] bg-white flex items-center gap-3 flex-shrink-0">
+        <div className="w-8 h-8 rounded-full bg-[#e8f0fe] text-[#1a73e8] flex items-center justify-center">
           <MessageSquare size={16} />
         </div>
         <div>
-          <p className="text-sm font-bold text-[var(--color-text)]">{teamName} Chat</p>
-          <p className="text-[10px] text-[var(--color-text-dim)]">Team conversation</p>
+          <p className="text-sm font-medium text-[#202124]">{teamName} Chat</p>
+          <p className="text-[10px] text-[#80868b]">Team conversation</p>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-1 min-h-0 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-0 min-h-0 scrollbar-thin">
         {isLoading && (
           <div className="flex items-center justify-center py-10">
             <div className="w-6 h-6 border-2 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
@@ -206,74 +206,77 @@ export const TeamChatView = ({ teamId, teamName }: TeamChatViewProps) => {
           return (
             <div key={msg._id}>
               {showDate && (
-                <div className="flex items-center gap-3 my-4">
-                  <div className="flex-1 h-px bg-[var(--color-border)]" />
-                  <span className="text-[10px] font-bold text-[var(--color-text-dim)] uppercase tracking-wider">{dateStr}</span>
-                  <div className="flex-1 h-px bg-[var(--color-border)]" />
+                <div className="flex items-center gap-3 my-3">
+                  <div className="flex-1 h-px bg-[#e0e0e0]" />
+                  <span className="text-[10px] font-medium text-[#80868b] uppercase tracking-wider">{dateStr}</span>
+                  <div className="flex-1 h-px bg-[#e0e0e0]" />
                 </div>
               )}
-              <div className={clsx('flex items-end gap-2.5 mb-2', isMine ? 'flex-row-reverse' : 'flex-row')}>
-                {/* Avatar */}
+              {/* Google Meet-style message row */}
+              <div className={clsx('flex items-start gap-2 mb-0.5 group', isMine ? 'flex-row-reverse' : 'flex-row')}>
+
+                {/* Avatar — only for others */}
                 {!isMine && (
-                  <div className="flex-shrink-0">
+                  <div className="flex-shrink-0 mt-0.5">
                     {msg.sender.avatar ? (
-                      <img src={msg.sender.avatar} alt={msg.sender.name} className="w-7 h-7 rounded-full object-cover" />
+                      <img src={msg.sender.avatar} alt={msg.sender.name} className="w-8 h-8 rounded-full object-cover" />
                     ) : (
-                      <div className="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[10px] font-bold">
+                      <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[11px] font-bold select-none">
                         {msg.sender.name.charAt(0).toUpperCase()}
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Bubble */}
-                <div className={clsx(
-                  'max-w-[70%] rounded-2xl px-3.5 py-2 shadow-sm',
-                  isMine
-                    ? 'bg-indigo-600 text-white rounded-br-md'
-                    : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text)] border border-[var(--color-border)] rounded-bl-md'
-                )}>
+                {/* Bubble + meta */}
+                <div className={clsx('flex flex-col max-w-[68%]', isMine ? 'items-end' : 'items-start')}>
+
+                  {/* Sender name — others only */}
                   {!isMine && (
-                    <p className="text-[10px] font-bold mb-0.5 text-indigo-600">{msg.sender.name}</p>
-                  )}
-                  <p className="text-[13px] leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
-                  <div className={clsx(
-                    'flex items-center gap-1.5 mt-1',
-                    isMine ? 'justify-end' : 'justify-start'
-                  )}>
-                    <span className={clsx(
-                      'text-[9px]',
-                      isMine ? 'text-white/60' : 'text-[var(--color-text-dim)]'
-                    )}>
-                      {formatTime(msg.createdAt)}
+                    <span className="text-[11px] font-semibold text-indigo-500 mb-1 ml-1 leading-none">
+                      {msg.sender.name}
                     </span>
-                    {msg.isEdited && (
-                      <span className={clsx('text-[9px]', isMine ? 'text-white/50' : 'text-[var(--color-text-dim)]')}>edited</span>
-                    )}
-                    {isMine && msg.delivery === 'sending' && (
-                      <span className="text-[9px] text-white/50">sending…</span>
+                  )}
+
+                  {/* Bubble */}
+                  <div className={clsx(
+                    'relative px-4 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap break-words',
+                    isMine
+                      ? 'bg-[#1a73e8] text-white rounded-[20px] rounded-tr-[4px]'
+                      : 'bg-[#f1f3f4] text-[#202124] rounded-[20px] rounded-tl-[4px]'
+                  )}>
+                    {msg.content}
+
+                    {/* Reactions */}
+                    {msg.reactions && msg.reactions.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {msg.reactions.map((r, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleReact(msg._id, r.emoji)}
+                            className={clsx(
+                              'text-[11px] px-2 py-0.5 rounded-full border transition-colors cursor-pointer',
+                              r.users.includes(user?.id || '')
+                                ? 'bg-white/20 border-white/30 text-white'
+                                : 'bg-white border-[#dadce0] text-[#3c4043]'
+                            )}
+                          >
+                            {r.emoji} {r.users.length}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
 
-                  {/* Reactions */}
-                  {msg.reactions && msg.reactions.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {msg.reactions.map((r, i) => (
-                        <button
-                          key={i}
-                          onClick={() => handleReact(msg._id, r.emoji)}
-                          className={clsx(
-                            'text-xs px-1.5 py-0.5 rounded-full border transition-colors cursor-pointer',
-                            r.users.includes(user?.id || '')
-                              ? 'bg-indigo-100 border-indigo-300 text-indigo-700'
-                              : 'bg-[var(--color-bg-secondary)] border-[var(--color-border)] text-[var(--color-text-secondary)]'
-                          )}
-                        >
-                          {r.emoji} {r.users.length}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {/* Timestamp + status */}
+                  <div className={clsx('flex items-center gap-1 mt-0.5 px-1', isMine ? 'flex-row-reverse' : 'flex-row')}>
+                    <span className="text-[10px] text-[#80868b]">{formatTime(msg.createdAt)}</span>
+                    {msg.isEdited && <span className="text-[10px] text-[#80868b]">· edited</span>}
+                    {isMine && msg.delivery === 'sending' && (
+                      <span className="text-[10px] text-[#80868b]">· sending…</span>
+                    )}
+                  </div>
+
                 </div>
               </div>
             </div>
@@ -286,8 +289,8 @@ export const TeamChatView = ({ teamId, teamName }: TeamChatViewProps) => {
       <TypingIndicator names={typingNames} />
 
       {/* Input */}
-      <div className="px-6 py-4 border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)]/20 flex-shrink-0">
-        <div className="flex items-end gap-3 bg-[var(--color-bg-tertiary)]/70 border border-[var(--color-border)] focus-within:border-[var(--color-border-strong)] focus-within:shadow-[0_0_0_3px_rgba(66,67,65,0.08)] rounded-2xl px-4 py-3 transition-all">
+      <div className="px-4 py-3 border-t border-[#e0e0e0] bg-white flex-shrink-0">
+        <div className="flex items-end gap-2 bg-[#f1f3f4] rounded-2xl px-4 py-2.5 transition-all focus-within:bg-white focus-within:ring-1 focus-within:ring-[#1a73e8] focus-within:shadow-sm">
           <textarea
             value={content}
             onChange={(e) => {
@@ -302,12 +305,12 @@ export const TeamChatView = ({ teamId, teamName }: TeamChatViewProps) => {
             }}
             placeholder={`Message ${teamName}...`}
             rows={1}
-            className="flex-1 bg-transparent text-[13px] text-[var(--color-text)] placeholder-[var(--color-text-dim)] resize-none outline-none max-h-32"
+            className="flex-1 bg-transparent text-[13.5px] text-[#202124] placeholder-[#80868b] resize-none outline-none max-h-32"
           />
           <button
             onClick={handleSend}
             disabled={!content.trim()}
-            className="p-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-30 disabled:hover:bg-indigo-600 transition-all flex-shrink-0 shadow-[0_2px_8px_rgba(99,102,241,0.2)] cursor-pointer"
+            className="p-2 rounded-full bg-[#1a73e8] text-white hover:bg-[#1557b0] disabled:opacity-30 disabled:hover:bg-[#1a73e8] transition-all flex-shrink-0 cursor-pointer"
           >
             <Send size={13} />
           </button>
