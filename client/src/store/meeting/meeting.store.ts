@@ -1,5 +1,13 @@
 import { create } from 'zustand';
 
+export interface Reaction {
+  id: string;       // unique per emission
+  socketId: string;
+  userId: string;
+  name: string;
+  emoji: string;
+}
+
 export interface Participant {
   id: string;
   name: string;
@@ -30,7 +38,9 @@ interface MeetingState {
   isRecording: boolean;
   isInCall: boolean;
   isSpeaking: boolean;
-  raisedHands: Set<string>; // socketIds
+  localHandRaised: boolean;  // local user's own hand state
+  raisedHands: Set<string>;  // socketIds of remote participants
+  reactions: Reaction[];     // ephemeral per-tile reactions keyed by socketId
   setCurrentMeeting: (m: Meeting | null) => void;
   setParticipants: (p: Participant[]) => void;
   addParticipant: (p: Participant) => void;
@@ -42,7 +52,10 @@ interface MeetingState {
   toggleRecording: () => void;
   setInCall: (v: boolean) => void;
   setLocalSpeaking: (v: boolean) => void;
+  setLocalHandRaised: (v: boolean) => void;
   setHandRaised: (socketId: string, raised: boolean) => void;
+  addReaction: (r: Reaction) => void;
+  removeReaction: (id: string) => void;
   resetMeeting: () => void;
   updateParticipant: (socketId: string, data: Partial<Participant>) => void;
 }
@@ -56,7 +69,9 @@ export const useMeetingStore = create<MeetingState>((set) => ({
   isRecording: false,
   isInCall: false,
   isSpeaking: false,
+  localHandRaised: false,
   raisedHands: new Set(),
+  reactions: [],
   setCurrentMeeting: (m) => set({ currentMeeting: m }),
   setParticipants: (p) => set({ participants: p }),
   addParticipant: (p) => set((s) => ({ participants: [...s.participants.filter(x => x.socketId !== p.socketId), p] })),
@@ -74,10 +89,13 @@ export const useMeetingStore = create<MeetingState>((set) => ({
   toggleRecording: () => set((s) => ({ isRecording: !s.isRecording })),
   setInCall: (v) => set({ isInCall: v }),
   setLocalSpeaking: (v) => set({ isSpeaking: v }),
+  setLocalHandRaised: (v) => set({ localHandRaised: v }),
   setHandRaised: (socketId, raised) => set((s) => {
     const next = new Set(s.raisedHands);
     raised ? next.add(socketId) : next.delete(socketId);
     return { raisedHands: next };
   }),
-  resetMeeting: () => set({ currentMeeting: null, participants: [], isMuted: false, isVideoOff: false, isScreenSharing: false, isRecording: false, isInCall: false, isSpeaking: false, raisedHands: new Set() }),
+  addReaction: (r) => set((s) => ({ reactions: [...s.reactions, r] })),
+  removeReaction: (id) => set((s) => ({ reactions: s.reactions.filter(r => r.id !== id) })),
+  resetMeeting: () => set({ currentMeeting: null, participants: [], isMuted: false, isVideoOff: false, isScreenSharing: false, isRecording: false, isInCall: false, isSpeaking: false, localHandRaised: false, raisedHands: new Set(), reactions: [] }),
 }));

@@ -50,9 +50,20 @@ const getChannel = async (channelId: string): Promise<ChannelPayload | null> => 
 };
 
 module.exports = (io: Server, socket: ChatSocket): void => {
-  socket.on('chat:join', (meetingId: string) => {
+  socket.on('chat:join', async (meetingId: string) => {
     if (!meetingId || typeof meetingId !== 'string') return;
     socket.join(`chat:${meetingId}`);
+    // Send existing chat history to the joining participant
+    try {
+      const history = await Message.find({ meeting: meetingId, isDeleted: false })
+        .populate('sender', 'name avatar')
+        .sort({ createdAt: 1 })
+        .limit(200)
+        .lean();
+      socket.emit('chat:history', history);
+    } catch {
+      // ignore — client will just start with empty history
+    }
   });
 
   socket.on('chat:message', async ({ meetingId, content }: { meetingId: string; content: string }) => {
@@ -83,6 +94,11 @@ module.exports = (io: Server, socket: ChatSocket): void => {
   socket.on('chat:leave', (meetingId: string) => {
     if (!meetingId || typeof meetingId !== 'string') return;
     socket.leave(`chat:${meetingId}`);
+  });
+
+  socket.on('chat:read', ({ meetingId, msgId }: { meetingId: string; msgId: string }) => {
+    if (!socket.user?.id || !meetingId || !msgId) return;
+    socket.to(`chat:${meetingId}`).emit('chat:read', { msgId, socketId: socket.id });
   });
 
   socket.on('channel:join', (channelId: string) => {

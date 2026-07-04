@@ -7,7 +7,7 @@ import { getSocket } from '../utils/socket';
 export const useChat = (meetingId: string) => {
   const { socket } = useSocket();
   const user = useAppSelector((s) => s.auth.user);
-  const { messages, typingUsers, addMessage, setTyping, markRead, clearChat } = useChatStore();
+  const { messages, typingUsers, addMessage, setMessages, setTyping, markRead } = useChatStore();
 
   useEffect(() => {
     if (!socket || !meetingId) return;
@@ -33,6 +33,21 @@ export const useChat = (meetingId: string) => {
       }
     };
 
+    // Load full history when joining (sent by server on chat:join)
+    const onHistory = (history: any[]) => {
+      const mapped = (history ?? []).map((data: any) => ({
+        id: data._id || data.id,
+        senderId: data.sender?._id || data.senderId,
+        senderName: data.sender?.name || data.senderName,
+        senderAvatar: data.sender?.avatar || data.senderAvatar,
+        content: data.content,
+        timestamp: data.createdAt || data.timestamp,
+        type: data.type || 'text',
+        readBy: data.readBy ?? [],
+      }));
+      setMessages(mapped);
+    };
+
     const onTyping = ({ name, isTyping }: { name: string; isTyping: boolean }) =>
       setTyping(name, isTyping);
 
@@ -42,18 +57,20 @@ export const useChat = (meetingId: string) => {
     // Re-join room after reconnect so we don't miss messages
     const onReconnect = () => join();
 
+    socket.on('chat:history',  onHistory);
     socket.on('chat:message',  onMsg);
     socket.on('chat:typing',   onTyping);
     socket.on('chat:read',     onRead);
     socket.on('connect',       onReconnect);
 
     return () => {
+      socket.off('chat:history',  onHistory);
       socket.off('chat:message',  onMsg);
       socket.off('chat:typing',   onTyping);
       socket.off('chat:read',     onRead);
       socket.off('connect',       onReconnect);
-      socket.emit('chat:leave', meetingId);
-      clearChat();
+      // Do NOT call clearChat() here — ChatBox unmounts when switching panels
+      // and we must preserve messages. clearChat() is called only on meeting end (resetMeeting).
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meetingId, socket]);

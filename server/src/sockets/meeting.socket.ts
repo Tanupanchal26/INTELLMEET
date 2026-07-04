@@ -216,9 +216,23 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
   socket.on('meeting:raise-hand', ({ roomId, raised }: { roomId: unknown; raised: boolean }) => {
     if (!isValidId(roomId) || !socket.user?.id) return;
     io.to(`meeting:${roomId}`).emit('meeting:raise-hand', {
-      userId: socket.user.id,
-      name:   socket.user.name,
+      socketId: socket.id,
+      userId:   socket.user.id,
+      name:     socket.user.name,
       raised,
+      raisedAt: raised ? new Date().toISOString() : null,
+    });
+  });
+
+  // ── Emoji reaction (ephemeral — broadcast only, not persisted) ────────────
+  socket.on('meeting:reaction', ({ roomId, emoji }: { roomId: unknown; emoji: unknown }) => {
+    if (!isValidId(roomId) || !socket.user?.id) return;
+    if (typeof emoji !== 'string' || !emoji.trim()) return;
+    io.to(`meeting:${roomId}`).emit('meeting:reaction', {
+      socketId: socket.id,
+      userId:   socket.user.id,
+      name:     socket.user.name,
+      emoji,
     });
   });
 
@@ -355,12 +369,17 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
 
       // Mark ended + invalidate joinCode and meetingId so nobody can rejoin.
       // Prefix with 'ENDED_' to make them non-matchable without losing audit trail.
+      const endedAt = new Date();
+      const durationMinutes = meeting.startedAt
+        ? Math.round((endedAt.getTime() - (meeting.startedAt as Date).getTime()) / 60_000)
+        : 0;
       await Meeting.findOneAndUpdate(
         { roomId },
         {
           $set: {
             status:    'ended',
-            endedAt:   new Date(),
+            endedAt,
+            duration:  durationMinutes,
             joinCode:  `ENDED_${meeting.joinCode}`,
             meetingId: `ENDED_${meeting.meetingId}`,
           },

@@ -60,19 +60,13 @@ const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenSh
   const {
     isMuted, isVideoOff, isScreenSharing, isRecording,
     toggleMute, toggleVideo,
-    currentMeeting, setHandRaised,
+    currentMeeting, setHandRaised, localHandRaised, setLocalHandRaised,
   } = useMeetingStore();
   const isHost = currentMeeting?.host === user?.id || (currentMeeting?.host as any)?._id === user?.id;
-  const [handRaised, setHandRaisedLocal] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
 
-  const handleMic = () => {
-    toggleMute();
-  };
-
-  const handleCamera = () => {
-    toggleVideo();
-  };
+  const handleMic = () => { toggleMute(); };
+  const handleCamera = () => { toggleVideo(); };
 
   const handleRecordingToggle = async () => {
     try {
@@ -84,32 +78,42 @@ const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenSh
   };
 
   const handleScreenShareToggle = async () => {
-    if (isScreenSharing) {
-      stopScreenShare?.();
-    } else {
-      await startScreenShare?.();
-    }
+    if (isScreenSharing) stopScreenShare?.();
+    else await startScreenShare?.();
   };
 
+  // Use the real roomId (UUID) from the store — NOT the MongoDB _id from useParams
+  const roomId = currentMeeting?.roomId || meetingId;
+
   const handleRaiseHand = () => {
-    const next = !handRaised;
-    setHandRaisedLocal(next);
+    const next = !localHandRaised;
+    setLocalHandRaised(next);
     const socket = getSocket();
-    if (socket?.connected && meetingId) {
-      socket.emit('meeting:raise-hand', { roomId: meetingId, raised: next, socketId: socket.id });
+    if (socket?.connected && roomId) {
+      socket.emit('meeting:raise-hand', { roomId, raised: next });
     }
-    // Update local store so ParticipantList reflects immediately
+    // Update raisedHands set so ParticipantList shows ✋ for local user immediately
     if (socket?.id) setHandRaised(socket.id, next);
-    toast(next ? '✋ Hand raised' : '✋ Hand lowered', { duration: 2000 });
+    // One-time subtle indicator — not a chat message, not a notification
+    // Just a brief visual cue for the local user only
+    toast(next ? '✋ Your hand is raised' : 'Hand lowered', {
+      duration: 1500,
+      position: 'bottom-center',
+      style: { fontSize: '12px', padding: '6px 12px' },
+    });
   };
 
   const sendReaction = (emoji: string) => {
     setShowReactions(false);
     const socket = getSocket();
-    if (socket?.connected && meetingId) {
-      socket.emit('meeting:reaction', { roomId: meetingId, emoji });
+    if (socket?.connected && roomId) {
+      // Emit to server — server broadcasts back to ALL participants including sender.
+      // The reaction will appear as a floating overlay on the sender's own video tile
+      // via the meeting:reaction handler in useMeeting.ts → addReaction in store →
+      // rendered by the ReactionOverlay inside VideoGrid per tile.
+      socket.emit('meeting:reaction', { roomId, emoji });
     }
-    toast(emoji, { duration: 2000, position: 'top-center' });
+    // No toast — the floating tile overlay IS the visual feedback
   };
 
   const handleLeave = async () => {
@@ -180,12 +184,13 @@ const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenSh
           activeColor="bg-red-500/15 text-red-400 border border-red-500/30"
         />
 
-        {/* Raise hand */}
+        {/* Raise hand — amber when active, exactly like Google Meet */}
         <ControlBtn
           icon={Hand}
-          label={handRaised ? 'Lower' : 'Raise'}
+          label={localHandRaised ? 'Lower' : 'Raise'}
           onClick={handleRaiseHand}
-          active={handRaised}
+          active={localHandRaised}
+          activeColor="bg-amber-500/15 text-amber-400 border border-amber-500/30"
         />
 
         {/* Reactions */}

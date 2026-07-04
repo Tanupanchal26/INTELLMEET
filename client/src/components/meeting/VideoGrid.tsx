@@ -3,30 +3,59 @@ import { MicOff, VideoOff } from 'lucide-react';
 import { useMeetingStore } from '../../store/meeting/meeting.store';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { clsx } from 'clsx';
+import { motion, AnimatePresence } from 'framer-motion';
 
-const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLocal, isHost, stream, isSingle, isSpeaking }: {
-  name: string; isMuted: boolean; isVideoOff: boolean; isScreenSharing?: boolean; isActive?: boolean; isLocal?: boolean; isHost?: boolean; stream?: MediaStream | null; isSingle?: boolean; isSpeaking?: boolean;
+// ── Per-tile reaction overlay ─────────────────────────────────────────────────
+// Reads only the reactions that belong to this tile's socketId/userId
+const TileReactions = ({ tileSocketId, tileUserId }: { tileSocketId: string; tileUserId: string }) => {
+  const reactions = useMeetingStore((s) =>
+    s.reactions.filter(r => r.socketId === tileSocketId || r.userId === tileUserId)
+  );
+
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+      <AnimatePresence>
+        {reactions.map((r) => (
+          <motion.div
+            key={r.id}
+            className="absolute bottom-14 left-1/2 -translate-x-1/2 text-4xl select-none drop-shadow-lg"
+            initial={{ opacity: 1, y: 0, scale: 0.6 }}
+            animate={{ opacity: 0, y: -80, scale: 1.5 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 2.8, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {r.emoji}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ── Individual video tile ─────────────────────────────────────────────────────
+const VideoTile = ({
+  tileId, name, isMuted, isVideoOff, isScreenSharing, isActive, isLocal,
+  isHost, stream, isSingle, isSpeaking, handRaised, socketId, userId,
+}: {
+  tileId: string; name: string; isMuted: boolean; isVideoOff: boolean;
+  isScreenSharing?: boolean; isActive?: boolean; isLocal?: boolean;
+  isHost?: boolean; stream?: MediaStream | null; isSingle?: boolean;
+  isSpeaking?: boolean; handRaised?: boolean; socketId: string; userId: string;
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-
     const hasVideo = !!stream && stream.getVideoTracks().some(t => t.enabled && t.readyState === 'live');
-
     if (hasVideo && !isVideoOff) {
-      // Only reassign srcObject when the stream identity actually changes
-      if (el.srcObject !== stream) {
-        el.srcObject = stream;
-      }
+      if (el.srcObject !== stream) el.srcObject = stream;
       el.play().catch(() => {});
     } else {
       el.srcObject = null;
     }
   }, [stream, isVideoOff]);
 
-  // Re-check whenever a track is added/removed (e.g. remote camera turns on mid-call)
   useEffect(() => {
     if (!stream || !videoRef.current) return;
     const onTrackChange = () => {
@@ -57,7 +86,7 @@ const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLoc
           ? 'ring-2 ring-[var(--color-primary)] ring-offset-2 ring-offset-[var(--color-bg)]'
           : 'ring-1 ring-white/10'
       )}
-      aria-label={`${name}${isLocal ? ' (You)' : ''} — ${isMuted ? 'muted' : 'unmuted'}${isVideoOff ? ', video off' : ''}${isSpeaking ? ', speaking' : ''}`}
+      aria-label={`${name}${isLocal ? ' (You)' : ''} — ${isMuted ? 'muted' : 'unmuted'}${isVideoOff ? ', video off' : ''}${isSpeaking ? ', speaking' : ''}${handRaised ? ', hand raised' : ''}`}
     >
       {stream && !isVideoOff ? (
         <video
@@ -72,7 +101,6 @@ const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLoc
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center relative">
-          {/* Animated glow effect */}
           <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/40" />
           <div className={clsx(
             "rounded-full bg-gradient-to-br from-[var(--color-primary)] to-purple-600 flex items-center justify-center text-white font-bold shadow-2xl border border-white/20 transition-all duration-500",
@@ -83,7 +111,27 @@ const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLoc
         </div>
       )}
 
-      {/* Name Tag Overlay */}
+      {/* ── Raise hand badge — top-right corner, always visible when raised ── */}
+      <AnimatePresence>
+        {handRaised && (
+          <motion.div
+            key="hand-badge"
+            className="absolute top-3 right-3 z-20 flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/90 backdrop-blur-sm shadow-lg border border-amber-400/40"
+            initial={{ opacity: 0, scale: 0.5, y: -8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.5, y: -8 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+            aria-label="Hand raised"
+          >
+            <span className="text-sm leading-none">✋</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Per-tile floating reaction overlay ── */}
+      <TileReactions tileSocketId={socketId} tileUserId={userId} />
+
+      {/* ── Name tag overlay ── */}
       <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 sm:opacity-100" aria-hidden="true">
         <div className="flex gap-2 items-center">
           <span className="text-sm font-medium text-white bg-black/50 backdrop-blur-md rounded-xl px-3 py-1.5 shadow-lg border border-white/10">
@@ -109,21 +157,37 @@ const VideoTile = ({ name, isMuted, isVideoOff, isScreenSharing, isActive, isLoc
   );
 };
 
+// ── Grid ──────────────────────────────────────────────────────────────────────
 const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream | null; remoteStreams?: Map<string, MediaStream> }) => {
-  const { participants, isVideoOff, isMuted, isScreenSharing, currentMeeting, isSpeaking } = useMeetingStore();
+  const { participants, isVideoOff, isMuted, isScreenSharing, currentMeeting, isSpeaking, raisedHands, localHandRaised } = useMeetingStore();
   const user = useAppSelector((s) => s.auth.user);
   const isHostUser = user?.id === currentMeeting?.host;
 
-  // participants store already excludes local user (filtered in useMeeting by socketId)
-  const remoteParticipants = participants;
+  const socket = (() => {
+    try { return (window as any).__intellmeet_socket_id__ as string | undefined; } catch { return undefined; }
+  })();
 
   const allTiles = [
-    { id: 'local', name: user?.name || 'You', isMuted, isVideoOff, isScreenSharing, isLocal: true, isActive: true, isHost: isHostUser, stream: localStream, isSpeaking },
-    ...remoteParticipants.map(p => ({
-      id: p.socketId,
+    {
+      tileId: 'local',
+      name: user?.name || 'You',
+      isMuted,
+      isVideoOff,
+      isScreenSharing,
+      isLocal: true,
+      isActive: true,
+      isHost: isHostUser,
+      stream: localStream,
+      isSpeaking,
+      handRaised: localHandRaised,
+      // For local tile reactions we match by userId since we don't expose socket.id here
+      socketId: 'local',
+      userId: user?.id || 'local',
+    },
+    ...participants.map(p => ({
+      tileId: p.socketId,
       name: p.name,
       isMuted: p.isMuted,
-      // Default to false (camera ON) — server sends the real state via media-state event
       isVideoOff: p.isVideoOff ?? false,
       isScreenSharing: p.isScreenSharing,
       isLocal: false,
@@ -131,9 +195,12 @@ const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream |
       isHost: p.isHost,
       stream: remoteStreams?.get(p.socketId) || null,
       isSpeaking: p.isSpeaking ?? false,
+      handRaised: p.handRaised ?? raisedHands.has(p.socketId),
+      socketId: p.socketId,
+      userId: p.id,
     })),
   ];
-  
+
   const isSingle = allTiles.length === 1;
   let gridCols = 'grid-cols-1';
   if (allTiles.length === 2) gridCols = 'grid-cols-2';
@@ -149,7 +216,7 @@ const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream |
           <VideoTile {...allTiles[0]} isSingle={true} />
         </div>
       ) : (
-        allTiles.map(tile => <VideoTile key={tile.id} {...tile} isSingle={false} />)
+        allTiles.map(tile => <VideoTile key={tile.tileId} {...tile} isSingle={false} />)
       )}
     </div>
   );

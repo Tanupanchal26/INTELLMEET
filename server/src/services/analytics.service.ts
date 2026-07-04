@@ -56,12 +56,12 @@ exports.getDashboardMetrics = async (tenantId, userId) => {
             { $match: { host: uid } },
             { $count: 'n' },
           ],
-          // Meetings this user actually attended (has a participantHistory entry)
+          // Meetings this user joined as a NON-HOST participant
           joined: [
-            { $match: { 'participantHistory.user': uid } },
+            { $match: { host: { $ne: uid }, 'participantHistory.user': uid } },
             { $count: 'n' },
           ],
-          // Total meetings (host OR participant)
+          // Total meetings = created + joined (host OR participant)
           total: [
             { $count: 'n' },
           ],
@@ -146,9 +146,9 @@ exports.getDashboardMetrics = async (tenantId, userId) => {
   const meetingsCreated  = agg.created?.[0]?.n        ?? 0;
   const meetingsJoined   = agg.joined?.[0]?.n         ?? 0;
   const totalMeetings    = agg.total?.[0]?.n           ?? 0;
-  const totalMinutes     = agg.hours?.[0]?.totalMinutes ?? 0;
-  const totalMeetingMinutes = totalMinutes;
-  const totalMeetingHours   = parseFloat((totalMinutes / 60).toFixed(1));
+  const totalMinutes        = agg.hours?.[0]?.totalMinutes ?? 0;
+  const totalMeetingHours   = Math.floor(totalMinutes / 60);
+  const totalMeetingMinutes = totalMinutes; // raw total minutes (e.g. 155)
   const lastMeeting      = agg.lastMeeting?.[0]       ?? null;
   const upcomingCount    = agg.upcomingCount?.[0]?.n  ?? 0;
 

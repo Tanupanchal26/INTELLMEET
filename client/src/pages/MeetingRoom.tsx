@@ -371,7 +371,10 @@ const MeetingRoom = () => {
                     exit={{ opacity: 0, y: -4 }}
                     transition={{ duration: 0.15 }}
                   >
-                    {activePanel === 'chat'         && <ChatBox meetingId={id ?? ''} />}
+                    {/* ChatBox is always mounted to preserve message history across panel switches */}
+                    <div className={clsx('h-full', activePanel !== 'chat' && 'hidden')}>
+                      <ChatBox meetingId={id ?? ''} />
+                    </div>
                     {activePanel === 'participants' && <ParticipantList />}
                     {activePanel === 'ai'           && <AIPanel meetingId={id ?? ''} />}
                     {activePanel === 'notes'        && <NotesPanel meetingId={id ?? ''} />}

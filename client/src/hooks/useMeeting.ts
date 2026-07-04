@@ -18,7 +18,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
   const { socket } = useSocket();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { addParticipant, removeParticipant, setInCall, resetMeeting, updateParticipant, setParticipants, setHandRaised } = useMeetingStore();
+  const { addParticipant, removeParticipant, setInCall, resetMeeting, updateParticipant, setParticipants, setHandRaised, addReaction, removeReaction } = useMeetingStore();
   const { appendTranscript } = useAIStore();
 
   useEffect(() => {
@@ -55,25 +55,63 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
         isVideoOff:      Boolean(isVideoOff),
         isScreenSharing: Boolean(isScreenSharing),
       });
-    const onRaiseHand   = ({ socketId, raised }: any) => {
+    const onRaiseHand = ({ socketId, userId, name, raised }: any) => {
       setHandRaised(sanitize(socketId), Boolean(raised));
       updateParticipant(sanitize(socketId), { handRaised: Boolean(raised) });
+      // One-time host-only toast — NOT a chat message, NOT a notification
+      // Only the host sees "✋ X raised their hand"; everyone else just sees the tile badge
+      if (raised && sanitize(socketId) !== socket.id) {
+        const { currentMeeting, participants } = useMeetingStore.getState();
+        // Determine if the current client is the host by checking if any local participant
+        // entry has isHost=true, or by matching currentMeeting.host against the local user.
+        // We use participants list: the local user is NOT in participants (filtered out),
+        // so we check currentMeeting.host against the userId of the raiser — if they differ
+        // and the current user IS the host, show the toast.
+        const localIsHost = currentMeeting?.host
+          ? !participants.some(p => p.id === currentMeeting.host) // host is not in remote list = local user is host
+          : false;
+        if (localIsHost) {
+          toast(`✋ ${sanitize(name)} raised their hand`, {
+            duration: 3000,
+            position: 'top-right',
+            style: { fontSize: '13px' },
+          });
+        }
+      }
+    };
+    const onReaction = ({ socketId, userId, name, emoji }: any) => {
+      const id = `${sanitize(socketId)}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      addReaction({
+        id,
+        socketId: sanitize(socketId),
+        userId: sanitize(userId),
+        name: sanitize(name),
+        emoji: sanitize(emoji),
+      });
+      // Auto-remove after 3 seconds — reaction is ephemeral, never persisted
+      setTimeout(() => removeReaction(id), 3000);
     };
     const onSpeaking    = ({ socketId, isSpeaking }: any) =>
       updateParticipant(sanitize(socketId), { isSpeaking: Boolean(isSpeaking) });
     const onParticipantsList = (list: any[]) => {
       // Filter out our own socket — the local tile is rendered separately
       const others = (list ?? []).filter(p => p.socketId !== socket.id);
-      setParticipants(others.map(p => ({
-        id: sanitize(p.id),
-        name: sanitize(p.name),
-        avatar: p.avatar,
-        socketId: sanitize(p.socketId),
-        isMuted: Boolean(p.isMuted),
-        isVideoOff: Boolean(p.isVideoOff),
-        isScreenSharing: Boolean(p.isScreenSharing),
-        isHost: Boolean(p.isHost),
-      })));
+      // Preserve existing handRaised state — the participants-list snapshot doesn't include it
+      const { participants: current } = useMeetingStore.getState();
+      setParticipants(others.map(p => {
+        const existing = current.find(c => c.socketId === p.socketId);
+        return {
+          id: sanitize(p.id),
+          name: sanitize(p.name),
+          avatar: p.avatar,
+          socketId: sanitize(p.socketId),
+          isMuted: Boolean(p.isMuted),
+          isVideoOff: Boolean(p.isVideoOff),
+          isScreenSharing: Boolean(p.isScreenSharing),
+          isHost: Boolean(p.isHost),
+          handRaised: existing?.handRaised ?? Boolean(p.handRaised),
+        };
+      }));
     };
     const onMeetingEndedByHost = () => {
       resetMeeting();
@@ -121,6 +159,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
     socket.on('ai:transcript',        onTranscript);
     socket.on('meeting:media-state',  onMediaState);
     socket.on('meeting:raise-hand',   onRaiseHand);
+    socket.on('meeting:reaction',      onReaction);
     socket.on('meeting:speaking',     onSpeaking);
     socket.on('meeting:participants-list', onParticipantsList);
     socket.on('meeting:ended-by-host', onMeetingEndedByHost);
@@ -137,6 +176,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       socket.off('ai:transcript',        onTranscript);
       socket.off('meeting:media-state',  onMediaState);
       socket.off('meeting:raise-hand',   onRaiseHand);
+      socket.off('meeting:reaction',      onReaction);
       socket.off('meeting:speaking',     onSpeaking);
       socket.off('meeting:participants-list', onParticipantsList);
       socket.off('meeting:ended-by-host', onMeetingEndedByHost);
@@ -146,7 +186,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       socket.off('connect',              onReconnect);
       socket.off('dashboard:refresh',    onDashboardRefresh);
     };
-  }, [socket, roomId, addParticipant, removeParticipant, setInCall, setParticipants, appendTranscript, updateParticipant, resetMeeting, navigate, qc, setHandRaised]);
+  }, [socket, roomId, addParticipant, removeParticipant, setInCall, setParticipants, appendTranscript, updateParticipant, resetMeeting, navigate, qc, setHandRaised, addReaction, removeReaction]);
 
   const leaveMeeting = async (_meetingId?: string) => {
     onBeforeLeave?.();
