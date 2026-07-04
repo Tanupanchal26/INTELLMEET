@@ -50,6 +50,7 @@ export interface IMeeting extends Document {
   summary:      string;
   actionItems:  { text: string; assignee: string; dueDate: Date }[];
   sentiment:    string;
+  reminderSent: boolean;
   createdAt:    Date;
   updatedAt:    Date;
 }
