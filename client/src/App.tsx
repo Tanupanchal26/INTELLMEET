@@ -163,40 +163,45 @@ const App = () => {
           ) : null}
         </ErrorBoundary>
         <Toaster
-          position="top-right"
-          gutter={8}
-          containerStyle={{ top: 16, right: 16 }}
+          position="bottom-left"
+          gutter={10}
+          containerStyle={{ bottom: 24, left: 24 }}
           toastOptions={{
-            duration: 4000,
+            duration: 3500,
             style: {
-              background: '#141420',
-              color: '#F1F5F9',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '12px',
+              background: '#ffffff',
+              color: '#202124',
+              border: 'none',
+              borderRadius: '8px',
               fontSize: '0.8125rem',
               fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
               fontWeight: '500',
-              padding: '10px 14px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
-              maxWidth: '360px',
-              lineHeight: '1.45',
+              padding: '12px 16px',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08)',
+              maxWidth: '320px',
+              lineHeight: '1.5',
+              borderLeft: '4px solid #dadce0',
             },
             success: {
-              iconTheme: { primary: '#10B981', secondary: '#fff' },
+              iconTheme: { primary: '#1e8e3e', secondary: '#fff' },
               style: {
-                background: '#141420',
-                border: '1px solid rgba(16,185,129,0.2)',
+                background: '#ffffff',
+                borderLeft: '4px solid #1e8e3e',
               },
             },
             error: {
-              iconTheme: { primary: '#EF4444', secondary: '#fff' },
+              iconTheme: { primary: '#d93025', secondary: '#fff' },
               style: {
-                background: '#141420',
-                border: '1px solid rgba(239,68,68,0.2)',
+                background: '#ffffff',
+                borderLeft: '4px solid #d93025',
               },
             },
             loading: {
-              iconTheme: { primary: '#6366F1', secondary: 'rgba(99,102,241,0.2)' },
+              iconTheme: { primary: '#1a73e8', secondary: '#e8f0fe' },
+              style: {
+                background: '#ffffff',
+                borderLeft: '4px solid #1a73e8',
+              },
             },
           }}
         />
