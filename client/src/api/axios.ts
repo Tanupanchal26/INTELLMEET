@@ -11,7 +11,7 @@ interface RetryableConfig extends AxiosRequestConfig {
 const axiosClient = axios.create({
   baseURL:         API_BASE_URL,
   headers:         { 'Content-Type': 'application/json' },
-  timeout:         12000,
+  timeout:         60000,
   withCredentials: true,
 });
 
