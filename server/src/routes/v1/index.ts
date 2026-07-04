@@ -91,6 +91,7 @@ router.delete('/teams/:id',                          validate(TV.teamParam),  te
 router.post('/teams/:id/members',                    validate(TV.inviteMember),    teamCtrl.inviteMember);
 router.post('/teams/:id/invite',                     validate(TV.inviteByEmail),   teamCtrl.inviteMemberByEmail);
 router.post('/teams/:id/join',                       validate(TV.teamParam),       teamCtrl.acceptInvitation);
+router.post('/teams/:id/reject',                     validate(TV.teamParam),       teamCtrl.rejectInvitation);
 router.delete('/teams/:id/members/:userId', authorize(ROLES.ADMIN), validate(TV.memberParam), teamCtrl.removeMember);
 router.patch('/teams/:id/members/:userId/role',      validate(TV.updateMemberRole), teamCtrl.updateMemberRole);
 router.post('/teams/:teamId/channels',               validate(CV.createChannel),   channelCtrl.createChannel);

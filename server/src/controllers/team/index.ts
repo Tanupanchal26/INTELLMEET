@@ -9,6 +9,7 @@ const teamService = require('../../services/team.service') as {
   inviteMember: (...args: unknown[]) => Promise<unknown>;
   inviteMemberByEmail: (...args: unknown[]) => Promise<unknown>;
   acceptInvitation: (...args: unknown[]) => Promise<unknown>;
+  rejectInvitation: (...args: unknown[]) => Promise<unknown>;
   removeMember: (...args: unknown[]) => Promise<unknown>;
   updateMemberRole: (...args: unknown[]) => Promise<unknown>;
   searchUsers: (...args: unknown[]) => Promise<unknown>;
@@ -54,6 +55,11 @@ exports.inviteMemberByEmail = asyncHandler(async (req: Request, res: Response) =
 exports.acceptInvitation = asyncHandler(async (req: Request, res: Response) => {
   const team = await teamService.acceptInvitation(req.params.id, req.tenantId, req.user?._id);
   ApiResponse.ok(res, team, 'Invitation accepted');
+});
+
+exports.rejectInvitation = asyncHandler(async (req: Request, res: Response) => {
+  const team = await teamService.rejectInvitation(req.params.id, req.tenantId, req.user?._id);
+  ApiResponse.ok(res, team, 'Invitation rejected');
 });
 
 exports.removeMember = asyncHandler(async (req: Request, res: Response) => {

@@ -85,13 +85,17 @@ const deleteTeam = async (teamId, tenantId, userId) => {
 const inviteMemberByEmail = async (teamId, tenantId, actorId, email, role = 'member') => {
   const team = await teamRepo.findById(teamId, tenantId);
   assertTeamRole(team, actorId, 'admin');
-  
+
   const targetUser = await User.findOne({ email: email.toLowerCase() });
-  if (!targetUser) throw ApiError.notFound('User not found with this email');
-  
-  // Add as pending
+  if (!targetUser) throw ApiError.notFound('No registered user found with this email');
+
+  const existing = team.members.find(m => m.user.toString() === targetUser._id.toString());
+  if (existing) {
+    if (existing.status === 'pending') throw ApiError.conflict('User already has a pending invitation');
+    throw ApiError.conflict('User is already a member of this team');
+  }
+
   const updated = await teamRepo.addMember(teamId, tenantId, targetUser._id, role, 'pending');
-  // Notify
   notifService.notifyTeamInvite(team, targetUser._id, actorId).catch(() => {});
   return updated;
 };
@@ -107,6 +111,15 @@ const inviteMember = async (teamId, tenantId, actorId, targetUserId, role = 'mem
   // Notify
   notifService.notifyTeamInvite(team, targetUserId, actorId).catch(() => {});
   return updated;
+};
+
+// ── Reject Invitation ─────────────────────────────────────────────────────────
+const rejectInvitation = async (teamId, tenantId, userId) => {
+  const team = await teamRepo.findById(teamId, tenantId);
+  const member = team.members.find(m => m.user.toString() === userId.toString());
+  if (!member) throw ApiError.notFound('No invitation found for this team');
+  if (member.status === 'active') throw ApiError.badRequest('Cannot reject — already an active member');
+  return teamRepo.removeMember(teamId, tenantId, userId);
 };
 
 // ── Accept Invitation ─────────────────────────────────────────────────────────
@@ -154,7 +167,7 @@ const searchUsers = async (tenantId, query, limit = 10) => {
 module.exports = {
   createTeam, getUserTeams, getTeam,
   updateTeam, deleteTeam,
-  inviteMember, inviteMemberByEmail, acceptInvitation, removeMember, updateMemberRole,
+  inviteMember, inviteMemberByEmail, acceptInvitation, rejectInvitation, removeMember, updateMemberRole,
   searchUsers,
 };
 

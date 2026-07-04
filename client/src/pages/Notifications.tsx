@@ -97,10 +97,20 @@ const Notifications = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['team'] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
       qc.invalidateQueries({ queryKey: ['notifications'] });
       toast.success('Joined team successfully!');
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to join team'),
+  });
+
+  const rejectInvite = useMutation({
+    mutationFn: (notif: Notification) => notificationService.delete(notif._id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['notifications'] });
+      toast.success('Invitation declined');
+    },
+    onError: () => toast.error('Failed to decline invitation'),
   });
 
   return (
@@ -262,14 +272,24 @@ const Notifications = () => {
                   {/* Actions */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-0.5">
                     {notif.type === 'team_invite' && !notif.isRead && notif.link?.includes('/teams/') && (
-                      <button
-                        onClick={() => acceptInvite.mutate(notif)}
-                        disabled={acceptInvite.isPending}
-                        className="p-1.5 px-3 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-all cursor-pointer mr-2"
-                        aria-label="Accept team invite"
-                      >
-                        Accept
-                      </button>
+                      <>
+                        <button
+                          onClick={() => acceptInvite.mutate(notif)}
+                          disabled={acceptInvite.isPending || rejectInvite.isPending}
+                          className="p-1.5 px-3 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 transition-all cursor-pointer"
+                          aria-label="Accept team invite"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => rejectInvite.mutate(notif)}
+                          disabled={acceptInvite.isPending || rejectInvite.isPending}
+                          className="p-1.5 px-3 rounded-lg text-sm font-semibold text-red-600 border border-red-200 hover:bg-red-50 transition-all cursor-pointer mr-1"
+                          aria-label="Reject team invite"
+                        >
+                          Reject
+                        </button>
+                      </>
                     )}
                     {!notif.isRead && (
                       <button

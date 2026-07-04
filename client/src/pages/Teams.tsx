@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Users, Lock, Hash, Trash2, Settings, ArrowRight } from 'lucide-react';
+import { Plus, Users, Lock, UserPlus, Trash2 } from 'lucide-react';
 import { teamService, type Team } from '../api/team.api';
 import { toTeam } from '../constants';
 import { useAppSelector } from '../hooks/useAppDispatch';
+import { TeamMembersModal } from '../components/team/TeamMembersModal';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Modal from '../components/common/Modal';
@@ -17,6 +18,7 @@ const Teams = () => {
   const navigate = useNavigate();
   const isAdmin = true;
   const [showCreate, setShowCreate] = useState(false);
+  const [inviteTeam, setInviteTeam] = useState<Team | null>(null);
   const [form, setForm] = useState({ name: '', description: '', isPrivate: false });
 
   const { data: teams = [], isLoading } = useQuery<Team[]>({
@@ -26,11 +28,14 @@ const Teams = () => {
 
   const createMutation = useMutation({
     mutationFn: (data: typeof form) => teamService.create(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['teams'] });
-      toast.success('Team created!');
+    onSuccess: async (res: any) => {
+      await qc.invalidateQueries({ queryKey: ['teams'] });
+      toast.success('Team created! Invite members now.');
       setShowCreate(false);
       setForm({ name: '', description: '', isPrivate: false });
+      // Open invite modal for the newly created team (use response data directly)
+      const newTeam: Team = res?.data ?? res;
+      if (newTeam?._id) setInviteTeam(newTeam);
     },
     onError: () => toast.error('Failed to create team'),
   });
@@ -86,14 +91,24 @@ const Teams = () => {
                     <p className="text-xs text-[var(--color-text-dim)]">#{team.slug}</p>
                   </div>
                 </div>
-                {isAdmin && (
+                <div className="flex items-center gap-1">
                   <button
-                    onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(team._id); }}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[var(--color-text-dim)] hover:text-red-400 hover:bg-red-400/10 transition-all"
+                    onClick={(e) => { e.stopPropagation(); setInviteTeam(team); }}
+                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[var(--color-text-dim)] hover:text-indigo-500 hover:bg-indigo-500/10 transition-all"
+                    title="Invite Member"
                   >
-                    <Trash2 size={14} />
+                    <UserPlus size={14} />
                   </button>
-                )}
+                  {isAdmin && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteMutation.mutate(team._id); }}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-[var(--color-text-dim)] hover:text-red-400 hover:bg-red-400/10 transition-all"
+                      title="Delete Team"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {team.description && (
@@ -112,6 +127,14 @@ const Teams = () => {
             </Card>
           ))}
         </div>
+      )}
+
+      {inviteTeam && (
+        <TeamMembersModal
+          team={inviteTeam}
+          open={!!inviteTeam}
+          onClose={() => setInviteTeam(null)}
+        />
       )}
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create Team">

@@ -4,7 +4,8 @@ import { teamService, type Team, type TeamMember } from '../../api/team.api';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
 import { useAppSelector } from '../../hooks/useAppDispatch';
-import { Search, Trash2, Shield, ShieldAlert, User, UserPlus } from 'lucide-react';
+import { usePresence } from '../../hooks/usePresence';
+import { Search, Trash2, Shield, ShieldAlert, User, UserPlus, Circle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface TeamMembersModalProps {
@@ -18,13 +19,13 @@ const ROLE_POWER: Record<string, number> = { owner: 4, admin: 3, member: 2, gues
 export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps) => {
   const qc = useQueryClient();
   const currentUser = useAppSelector((s) => s.auth.user);
+  const { isOnline } = usePresence();
   const [search, setSearch] = useState('');
-  
+
   const currentMemberInfo = team.members.find(m => m.user._id === currentUser?.id);
   const currentRole = currentMemberInfo?.role || 'guest';
   const canManage = ROLE_POWER[currentRole] >= ROLE_POWER['admin'];
 
-  // Search users query
   const { data: searchResults = [], isFetching } = useQuery({
     queryKey: ['team-search-users', search],
     queryFn: () => teamService.searchUsersToInvite(search).then((r: any) => r.data),
@@ -61,7 +62,8 @@ export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps)
   });
 
   const updateRoleMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string, role: string }) => teamService.updateMemberRole(team._id, userId, role),
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      teamService.updateMemberRole(team._id, userId, role),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['team', team._id] });
       toast.success('Role updated');
@@ -72,32 +74,33 @@ export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps)
   return (
     <Modal open={open} onClose={onClose} title={`Team Members (${team.members.length})`}>
       <div className="flex flex-col gap-6 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+
         {/* Invite Section */}
         {canManage && (
           <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-semibold text-[var(--color-text)]">Add New Member</h3>
+            <h3 className="text-sm font-semibold text-[var(--color-text)]">Invite Member by Email or Name</h3>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-dim)]" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or email..."
+                placeholder="Search by name or enter email..."
                 className="input-light pl-10"
               />
             </div>
-            
+
             {search.trim().length >= 2 && (
               <div className="flex flex-col gap-2 mt-2 bg-[var(--color-bg-secondary)]/50 rounded-lg p-2 border border-[var(--color-border)]">
                 {isFetching ? (
                   <p className="text-xs text-center text-[var(--color-text-muted)] py-2">Searching...</p>
                 ) : searchResults.length === 0 ? (
                   <div className="flex flex-col items-center gap-2 py-3">
-                    <p className="text-xs text-[var(--color-text-muted)]">No users found.</p>
+                    <p className="text-xs text-[var(--color-text-muted)]">No registered users found.</p>
                     {search.includes('@') && (
-                      <Button 
-                        variant="secondary" 
-                        size="sm" 
+                      <Button
+                        variant="secondary"
+                        size="sm"
                         onClick={() => inviteByEmailMutation.mutate(search)}
                         disabled={inviteByEmailMutation.isPending}
                         className="gap-2"
@@ -129,9 +132,9 @@ export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps)
                             {existingMember.status === 'pending' ? 'Pending' : 'Member'}
                           </span>
                         ) : (
-                          <Button 
-                            variant="secondary" 
-                            size="sm" 
+                          <Button
+                            variant="secondary"
+                            size="sm"
                             onClick={() => inviteMutation.mutate(u._id)}
                             disabled={inviteMutation.isPending}
                             className="gap-2"
@@ -158,17 +161,27 @@ export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps)
               const isSelf = member.user._id === currentUser?.id;
               const canEditThisUser = canManage && member.role !== 'owner' && currentRole === 'owner';
               const canRemoveThisUser = (canManage && ROLE_POWER[currentRole] > ROLE_POWER[member.role]) || isSelf;
+              const online = isOnline(member.user._id);
 
               return (
                 <div key={member.user._id} className="flex items-center justify-between p-2 rounded-lg hover:bg-[var(--color-bg-secondary)] transition-colors group">
                   <div className="flex items-center gap-3">
-                    {member.user.avatar ? (
-                      <img src={member.user.avatar} alt={member.user.name} className="w-9 h-9 rounded-full object-cover" />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-bold">
-                        {member.user.name.charAt(0).toUpperCase()}
-                      </div>
-                    )}
+                    {/* Avatar with online dot */}
+                    <div className="relative flex-shrink-0">
+                      {member.user.avatar ? (
+                        <img src={member.user.avatar} alt={member.user.name} className="w-9 h-9 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-bold">
+                          {member.user.name.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <Circle
+                        size={9}
+                        className={`absolute bottom-0 right-0 ${online ? 'text-emerald-500 fill-emerald-500' : 'text-slate-300 fill-slate-300'}`}
+                      />
+                    </div>
+
+                    {/* Name / Email / Role / Status */}
                     <div className="flex flex-col">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-[var(--color-text)]">{member.user.name}</span>
@@ -176,12 +189,15 @@ export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps)
                         {member.status === 'pending' && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-bold uppercase">Pending</span>}
                       </div>
                       <span className="text-xs text-[var(--color-text-dim)]">{member.user.email}</span>
+                      <span className={`text-[10px] font-semibold ${online ? 'text-emerald-600' : 'text-[var(--color-text-dim)]'}`}>
+                        {online ? 'Online' : 'Offline'}
+                      </span>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3">
                     {canEditThisUser ? (
-                      <select 
+                      <select
                         value={member.role}
                         onChange={(e) => updateRoleMutation.mutate({ userId: member.user._id, role: e.target.value })}
                         disabled={updateRoleMutation.isPending}
@@ -201,11 +217,11 @@ export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps)
                     )}
 
                     {canRemoveThisUser && (
-                      <button 
+                      <button
                         onClick={() => removeMutation.mutate(member.user._id)}
                         disabled={removeMutation.isPending}
                         className="p-1.5 rounded-md text-[var(--color-text-dim)] hover:text-red-500 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
-                        title={isSelf ? "Leave team" : "Remove member"}
+                        title={isSelf ? 'Leave team' : 'Remove member'}
                       >
                         <Trash2 size={14} />
                       </button>
