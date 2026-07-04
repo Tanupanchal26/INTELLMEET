@@ -96,16 +96,7 @@ const AISummary = () => {
     if (!selectedId) return;
     store.setGenerating(true);
     try {
-      // Fetch existing transcript first; fall back to empty string
-      const tRes: any = await aiService.getTranscript(selectedId);
-      const transcript: string = tRes?.data?.transcript ?? tRes?.transcript ?? '';
-      const chunks = tRes?.data?.chunks ?? tRes?.chunks ?? [];
-      
-      if (!transcript.trim() && chunks.length === 0) {
-        toast.error('Meeting transcript is empty. Generate or upload a transcript before requesting a summary.');
-        return;
-      }
-      const sRes: any = await aiService.generateSummary(selectedId, transcript);
+      const sRes: any = await aiService.generateSummary(selectedId, '');
       store.setSummary(sRes?.data?.summary ?? sRes?.summary ?? '');
       const aRes: any = await aiService.getActionItems(selectedId);
       store.setActionItems(aRes?.data?.actionItems ?? aRes?.actionItems ?? []);
@@ -134,9 +125,12 @@ const AISummary = () => {
     setChatHistory(updated);
     try {
       const res: any = await aiService.assistantChat(selectedId, msg, chatHistory);
-      setChatHistory([...updated, { role: 'assistant', content: res?.data?.reply ?? res?.reply ?? 'No response' }]);
-    } catch { toast.error('Assistant error'); }
-    finally { setChatLoading(false); }
+      const reply = res?.data?.reply ?? res?.reply ?? 'No response';
+      setChatHistory([...updated, { role: 'assistant', content: reply }]);
+    } catch (err: any) {
+      const errMsg = err?.message || 'Assistant unavailable';
+      setChatHistory([...updated, { role: 'assistant', content: `Sorry, I couldn't process that. (${errMsg})` }]);
+    } finally { setChatLoading(false); }
   };
 
   const handleSaveAsTasks = async () => {

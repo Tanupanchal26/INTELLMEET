@@ -203,16 +203,16 @@ exports.generateMeetingMinutes = async (meetingId: string) => {
 
 // ── AI Assistant ──────────────────────────────────────────────────────────────
 exports.assistantChat = async (meetingId: string, tenantId: string, userMessage: string, history: any[] = []) => {
-  const [aiResult, tenantMeetings] = await Promise.all([
-    AIResult.findOne({ meeting: meetingId }),
-    Meeting.find({ tenantId }).select('title').limit(20).lean(),
-  ]);
+  const aiResult = await AIResult.findOne({ meeting: meetingId });
+  const tenantMeetings = tenantId
+    ? await Meeting.find({ tenantId }).select('title').limit(20).lean()
+    : [];
 
   const transcript = aiResult?.transcript ||
     (aiResult?.transcriptChunks || []).map((c: any) => `${c.speaker}: ${c.text}`).join('\n');
 
   return chat(userMessage, {
-    transcript,
+    transcript:    transcript || '',
     summary:       aiResult?.summary || '',
     history,
     meetingTitles: tenantMeetings.map((m: any) => m.title),

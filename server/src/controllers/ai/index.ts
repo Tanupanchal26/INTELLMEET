@@ -29,7 +29,7 @@ exports.getFollowUpSuggestions = asyncHandler(async (req, res) => {
 // ── GET /ai/:meetingId ────────────────────────────────────────────────────────
 exports.getAIResult = asyncHandler(async (req, res) => {
   const result = await AIResult.findOne({ meeting: req.params.meetingId });
-  if (!result) throw ApiError.notFound('AI result not found');
+  if (!result) return ApiResponse.ok(res, { meeting: req.params.meetingId, processingStatus: 'idle', summary: '', transcript: '', actionItems: [], minutes: '' }, 'No AI result yet');
   return ApiResponse.ok(res, result, 'AI result retrieved');
 });
 
@@ -79,17 +79,21 @@ exports.deleteSummary = asyncHandler(async (req, res) => {
 // ── GET /ai/:meetingId/transcript ─────────────────────────────────────────────
 exports.getTranscript = asyncHandler(async (req, res) => {
   const { page = 1, limit = 100 } = req.query;
-  const result = await AIResult.findOne({ meeting: req.params.meetingId });
-  const chunks = result?.transcriptChunks || [];
-  const start  = (Number(page) - 1) * Number(limit);
-  const paged  = chunks.slice(start, start + Number(limit));
-  return ApiResponse.ok(res, {
-    transcript: result?.transcript || '',
-    chunks:     paged,
-    total:      chunks.length,
-    page:       Number(page),
-    limit:      Number(limit),
-  }, 'Transcript retrieved');
+  try {
+    const result = await AIResult.findOne({ meeting: req.params.meetingId });
+    const chunks = result?.transcriptChunks || [];
+    const start  = (Number(page) - 1) * Number(limit);
+    const paged  = chunks.slice(start, start + Number(limit));
+    return ApiResponse.ok(res, {
+      transcript: result?.transcript || '',
+      chunks:     paged,
+      total:      chunks.length,
+      page:       Number(page),
+      limit:      Number(limit),
+    }, 'Transcript retrieved');
+  } catch {
+    return ApiResponse.ok(res, { transcript: '', chunks: [], total: 0, page: 1, limit: 100 }, 'No transcript yet');
+  }
 });
 
 // ── POST /ai/:meetingId/transcript ────────────────────────────────────────────
@@ -207,13 +211,18 @@ exports.assistantChat = asyncHandler(async (req, res) => {
   if (!message) throw ApiError.badRequest('message is required');
   if (message.length > MAX_PROMPT)
     throw ApiError.badRequest(`message exceeds ${MAX_PROMPT} character limit`);
-  const reply = await aiService.assistantChat(
-    req.params.meetingId,
-    req.user?.tenantId,
-    message,
-    context?.history || []
-  );
-  return ApiResponse.ok(res, { reply }, 'Assistant replied');
+  try {
+    const reply = await aiService.assistantChat(
+      req.params.meetingId,
+      req.user?.tenantId ?? '',
+      message,
+      context?.history || []
+    );
+    return ApiResponse.ok(res, { reply }, 'Assistant replied');
+  } catch (err: any) {
+    const msg = err?.message || 'AI service unavailable';
+    return res.status(200).json({ success: true, data: { reply: `Sorry, I couldn't process that right now. (${msg})` } });
+  }
 });
 
 // ── POST /ai/:meetingId/tasks ─────────────────────────────────────────────────
