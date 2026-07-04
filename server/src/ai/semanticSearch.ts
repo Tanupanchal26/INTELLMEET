@@ -1,9 +1,8 @@
 // @ts-nocheck
-const { getClient }      = require('./openai');
+const { embed }          = require('./gemini');
 const { getRedisClient } = require('../config/redis');
 
-const EMBED_MODEL = 'text-embedding-3-small';
-const CACHE_TTL   = 86400; // 24h
+const CACHE_TTL = 86400; // 24h
 
 // Float32Array is ~4x faster than plain array for dot-product loops
 const cosineSimilarity = (a, b) => {
@@ -13,10 +12,11 @@ const cosineSimilarity = (a, b) => {
     normA += a[i] * a[i];
     normB += b[i] * b[i];
   }
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
 };
 
-const cacheKey = (text) => `embed:${Buffer.from(text.slice(0, 200)).toString('base64')}`;
+const cacheKey = (text) => `gembed:${Buffer.from(text.slice(0, 200)).toString('base64')}`;
 
 const getCachedEmbedding = async (redis, key) => {
   if (!redis) return null;
@@ -31,54 +31,32 @@ const setCachedEmbedding = async (redis, key, vec) => {
   try { await redis.setEx(key, CACHE_TTL, JSON.stringify(Array.from(vec))); } catch {}
 };
 
-/**
- * Batch-embed all texts in a single OpenAI API call (up to 2048 inputs).
- * Falls back to individual calls for cache hits.
- */
-const batchGetEmbeddings = async (texts) => {
-  const redis   = getRedisClient();
-  const results = new Array(texts.length).fill(null);
-  const missing = []; // { idx, text }
+const getEmbedding = async (text) => {
+  const redis = getRedisClient();
+  const key   = cacheKey(text);
+  const hit   = await getCachedEmbedding(redis, key);
+  if (hit) return hit;
 
-  // Check cache for each text
-  await Promise.all(texts.map(async (text, idx) => {
-    const key = cacheKey(text);
-    const hit = await getCachedEmbedding(redis, key);
-    if (hit) results[idx] = hit;
-    else     missing.push({ idx, text });
-  }));
-
-  if (missing.length > 0) {
-    const client = getClient();
-    const res = await client.embeddings.create({
-      model: EMBED_MODEL,
-      input: missing.map(m => m.text.slice(0, 8000)),
-    });
-
-    await Promise.all(res.data.map(async (item, i) => {
-      const vec = new Float32Array(item.embedding);
-      const { idx, text } = missing[i];
-      results[idx] = vec;
-      await setCachedEmbedding(redis, cacheKey(text), vec);
-    }));
-  }
-
-  return results;
+  const raw = await embed(text.slice(0, 8000));
+  const vec = new Float32Array(raw);
+  await setCachedEmbedding(redis, key, vec);
+  return vec;
 };
 
 /**
- * Semantic search over meeting documents.
- * Uses a single batched OpenAI call instead of N+1 individual calls.
+ * Semantic search over meeting documents using Gemini embeddings.
  */
 exports.semanticSearch = async (query, documents, topK = 5) => {
   if (!documents.length) return [];
 
-  const texts = [query, ...documents.map(d => `${d.title} ${d.content}`)];
-  const embeddings = await batchGetEmbeddings(texts);
+  // Embed query + all documents in parallel (each call is individually cached)
+  const [queryEmbed, ...docEmbeds] = await Promise.all([
+    getEmbedding(query),
+    ...documents.map(d => getEmbedding(`${d.title} ${d.content}`)),
+  ]);
 
-  const queryEmbed = embeddings[0];
   return documents
-    .map((doc, i) => ({ ...doc, score: cosineSimilarity(queryEmbed, embeddings[i + 1]) }))
+    .map((doc, i) => ({ ...doc, score: cosineSimilarity(queryEmbed, docEmbeds[i]) }))
     .filter(d => d.score > 0.3)
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
