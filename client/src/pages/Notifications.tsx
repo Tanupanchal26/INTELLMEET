@@ -128,9 +128,16 @@ const Notifications = () => {
   });
 
   const rejectInvite = useMutation({
-    mutationFn: (notif: Notification) => notificationService.delete(notif._id),
+    mutationFn: async (notif: Notification) => {
+      if (notif.link?.includes('/teams/')) {
+        const teamId = notif.link.split('/teams/')[1];
+        await teamService.rejectInvite(teamId);
+      }
+      return notificationService.delete(notif._id);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['notifications'] });
+      qc.invalidateQueries({ queryKey: ['teams'] });
       toast.success('Invitation declined');
     },
     onError: () => toast.error('Failed to decline invitation'),

@@ -53,6 +53,18 @@ io.use(async (socket, next) => {
     presenceSocket(io, socket);
     teamChatSocket(io, socket);
 
+    // Re-join team rooms after reconnect
+    socket.on('team-chat:rejoin', async (teamIds) => {
+      if (!Array.isArray(teamIds)) return;
+      const Team = require('../models/Team');
+      for (const teamId of teamIds) {
+        try {
+          const team = await Team.findOne({ _id: teamId, 'members.user': socket.user?.id, isArchived: false });
+          if (team) socket.join(`team_chat:${teamId}`);
+        } catch { /* ignore */ }
+      }
+    });
+
     socket.on('disconnect', (reason) => {
       logger.info(`[SOCKET] disconnected: ${sanitizeLog(socket.user?.id)} — ${sanitizeLog(reason)}`);
     });

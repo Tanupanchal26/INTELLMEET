@@ -38,6 +38,7 @@ export const teamService = {
   inviteMember:       (id: string, userId: string, role = 'member') => api.post(`/teams/${id}/members`, { userId, role }),
   inviteByEmail:      (id: string, email: string, role = 'member') => api.post(`/teams/${id}/invite`, { email, role }),
   acceptInvite:       (id: string) => api.post(`/teams/${id}/join`),
+  rejectInvite:       (id: string) => api.post(`/teams/${id}/reject`),
   removeMember:       (id: string, userId: string) => api.delete(`/teams/${id}/members/${userId}`),
   updateMemberRole:   (id: string, userId: string, role: string) => api.patch(`/teams/${id}/members/${userId}/role`, { role }),
   listChannels:       (teamId: string) => api.get<Channel[]>(`/teams/${teamId}/channels`),

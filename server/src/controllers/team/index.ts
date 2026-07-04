@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 
 const teamService = require('../../services/team.service') as {
+  init: (io: unknown) => void;
   createTeam: (...args: unknown[]) => Promise<unknown>;
   getUserTeams: (...args: unknown[]) => Promise<unknown>;
   getTeam: (...args: unknown[]) => Promise<unknown>;

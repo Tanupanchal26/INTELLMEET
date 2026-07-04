@@ -5,7 +5,7 @@ const { authenticate, authorize, protect, scopeTenant } = authMiddleware as any;
 const rateLimitMiddleware = require('../../middleware/rateLimit.middleware') as any;
 const { authLimiter, aiLimiter } = rateLimitMiddleware;
 const validate = require('../../middleware/validate.middleware') as any;
-const healthCtrl = require('../../controllers/health') as any;
+const healthCtrl = require('../../controllers/health.controller') as any;
 const Tenant   = require('../../models/Tenant') as any;
 import multer from 'multer';
 

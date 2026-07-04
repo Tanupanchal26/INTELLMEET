@@ -6,6 +6,9 @@ const notifService = require('./notification.service');
 const ApiError    = require('../utils/ApiError');
 const { PAGINATION } = require('../constants');
 
+let _io = null;
+const init = (io) => { _io = io; };
+
 const slugify = (str) =>
   str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -18,6 +21,13 @@ const assertTeamRole = (team, userId, minRole) => {
     throw ApiError.forbidden(`Requires team ${minRole} role or above`);
   }
   return role;
+};
+
+// Emit team member update to all members in the team socket room
+const emitTeamUpdate = (teamId, team) => {
+  if (_io) {
+    _io.to(`team_chat:${teamId}`).emit('team:members-updated', team);
+  }
 };
 
 // ── Create team ───────────────────────────────────────────────────────────────
@@ -112,13 +122,14 @@ const inviteMember = async (teamId, tenantId, actorId, targetUserId, role = 'mem
   if (general) await channelRepo.addMember(general._id, targetUserId);
   // Notify
   notifService.notifyTeamInvite(team, targetUserId, actorId).catch(() => {});
+  emitTeamUpdate(teamId, updated);
   return updated;
 };
 
 // ── Reject Invitation ─────────────────────────────────────────────────────────
 const rejectInvitation = async (teamId, tenantId, userId) => {
   const team = await teamRepo.findById(teamId, tenantId);
-  const member = team.members.find(m => m.user.toString() === userId.toString());
+  const member = team.members.find(m => m.user.toString() === userId.toString() || m.user?._id?.toString() === userId.toString());
   if (!member) throw ApiError.notFound('No invitation found for this team');
   if (member.status === 'active') throw ApiError.badRequest('Cannot reject — already an active member');
   return teamRepo.removeMember(teamId, tenantId, userId);
@@ -127,13 +138,14 @@ const rejectInvitation = async (teamId, tenantId, userId) => {
 // ── Accept Invitation ─────────────────────────────────────────────────────────
 const acceptInvitation = async (teamId, tenantId, userId) => {
   const team = await teamRepo.findById(teamId, tenantId);
-  const member = team.members.find(m => m.user.toString() === userId.toString());
+  const member = team.members.find(m => m.user.toString() === userId.toString() || m.user?._id?.toString() === userId.toString());
   if (!member) throw ApiError.notFound('No invitation found for this team');
   if (member.status === 'active') throw ApiError.badRequest('You are already an active member of this team');
   
   const updated = await teamRepo.updateMemberStatus(teamId, tenantId, userId, 'active');
   const general = await channelRepo.findBySlug(team._id, 'general');
   if (general) await channelRepo.addMember(general._id, userId);
+  emitTeamUpdate(teamId, updated);
   return updated;
 };
 
@@ -167,6 +179,7 @@ const searchUsers = async (tenantId, query, limit = 10) => {
 };
 
 module.exports = {
+  init,
   createTeam, getUserTeams, getTeam,
   updateTeam, deleteTeam,
   inviteMember, inviteMemberByEmail, acceptInvitation, rejectInvitation, removeMember, updateMemberRole,

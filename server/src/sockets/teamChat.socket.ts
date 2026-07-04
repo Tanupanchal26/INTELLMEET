@@ -32,7 +32,7 @@ const teamChatSocket = (io, socket) => {
   // Receive a message from client
   socket.on('team-chat:message', async (data) => {
     try {
-      const { teamId, content, type = 'text', attachments = [] } = data;
+      const { teamId, content, type = 'text', attachments = [], tempId } = data;
       
       const team = await teamRepo.findById(teamId, tenantId);
       const role = teamRepo.getMemberRole(team, userId);
@@ -53,11 +53,11 @@ const teamChatSocket = (io, socket) => {
         { path: 'sender', select: 'name email avatar isOnline lastActive' }
       ]);
 
-      // Broadcast to room
-      io.to(getTeamRoom(teamId)).emit('team-chat:message', populatedMsg);
+      // Broadcast to all OTHER members in the room (exclude sender)
+      socket.to(getTeamRoom(teamId)).emit('team-chat:message', populatedMsg);
       
-      // Confirm delivery to sender
-      socket.emit('team-chat:delivery', { messageId: msg._id, state: 'sent' });
+      // Send confirmed message back to sender with tempId so client can replace optimistic
+      socket.emit('team-chat:message:confirmed', { tempId, message: populatedMsg });
     } catch (error) {
       socket.emit('team-chat:error', { message: error.message || 'Failed to send message' });
     }

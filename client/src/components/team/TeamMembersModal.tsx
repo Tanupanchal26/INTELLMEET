@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { teamService, type Team, type TeamMember } from '../../api/team.api';
 import Modal from '../common/Modal';
 import Button from '../common/Button';
 import { useAppSelector } from '../../hooks/useAppDispatch';
 import { usePresence } from '../../hooks/usePresence';
+import { useSocket } from '../../hooks/useSocket';
 import { Search, Trash2, Shield, ShieldAlert, User, UserPlus, Circle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -16,11 +17,34 @@ interface TeamMembersModalProps {
 
 const ROLE_POWER: Record<string, number> = { owner: 4, admin: 3, member: 2, guest: 1 };
 
-export const TeamMembersModal = ({ team, open, onClose }: TeamMembersModalProps) => {
+export const TeamMembersModal = ({ team: initialTeam, open, onClose }: TeamMembersModalProps) => {
   const qc = useQueryClient();
   const currentUser = useAppSelector((s) => s.auth.user);
   const { isOnline } = usePresence();
+  const { socket } = useSocket();
   const [search, setSearch] = useState('');
+
+  // Always fetch live team data so newly added/removed members appear immediately
+  const { data: liveTeam } = useQuery<Team>({
+    queryKey: ['team', initialTeam._id],
+    queryFn: () => teamService.getById(initialTeam._id).then((r: any) => r.data ?? r),
+    enabled: open,
+    staleTime: 0,
+  });
+
+  const team = liveTeam ?? initialTeam;
+
+  // Listen for real-time member updates
+  useEffect(() => {
+    if (!socket) return;
+    const onMembersUpdated = (updatedTeam: Team) => {
+      if (updatedTeam._id === initialTeam._id) {
+        qc.setQueryData(['team', initialTeam._id], updatedTeam);
+      }
+    };
+    socket.on('team:members-updated', onMembersUpdated);
+    return () => { socket.off('team:members-updated', onMembersUpdated); };
+  }, [socket, initialTeam._id, qc]);
 
   const currentMemberInfo = team.members.find(m => m.user._id === currentUser?.id);
   const currentRole = currentMemberInfo?.role || 'guest';

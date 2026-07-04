@@ -58,6 +58,9 @@ const start = async () => {
     // Inject io into notification service for real-time push
     const notifService = require('./services/notification.service');
     notifService.init(io);
+    // Inject io into team service for real-time member updates
+    const teamService = require('./services/team.service');
+    teamService.init(io);
     startReminderScheduler();
 
     server.listen(config.port, '0.0.0.0', () => {

@@ -11,8 +11,12 @@ class TeamRepository extends BaseRepository {
   }
 
   findByMember(tenantId, userId) {
-    return Team.find({ tenantId, isArchived: false, 'members.user': userId })
+    const filter = tenantId
+      ? { tenantId, isArchived: false, 'members.user': userId }
+      : { isArchived: false, 'members.user': userId };
+    return Team.find(filter)
       .select('name slug description avatar isPrivate members createdAt')
+      .populate('members.user', 'name email avatar')
       .sort({ createdAt: -1 });
   }
 
@@ -25,37 +29,44 @@ class TeamRepository extends BaseRepository {
       filter,
       { $push: { members: { user: userId, role, status } } },
       { new: true }
-    );
+    ).populate('members.user', 'name email avatar');
     if (!team) throw ApiError.conflict('User is already a member or team not found');
     return team;
   }
 
   async updateMemberStatus(teamId, tenantId, userId, status) {
+    const filter = tenantId
+      ? { _id: teamId, tenantId, 'members.user': userId }
+      : { _id: teamId, 'members.user': userId };
     const team = await Team.findOneAndUpdate(
-      { _id: teamId, tenantId, 'members.user': userId },
+      filter,
       { $set: { 'members.$.status': status } },
       { new: true }
-    );
+    ).populate('members.user', 'name email avatar');
     if (!team) throw ApiError.notFound('Team member not found');
     return team;
   }
 
   async removeMember(teamId, tenantId, userId) {
+    const filter = tenantId ? { _id: teamId, tenantId } : { _id: teamId };
     const team = await Team.findOneAndUpdate(
-      { _id: teamId, tenantId },
+      filter,
       { $pull: { members: { user: userId } } },
       { new: true }
-    );
+    ).populate('members.user', 'name email avatar');
     if (!team) throw ApiError.notFound('Team not found');
     return team;
   }
 
   async updateMemberRole(teamId, tenantId, userId, role) {
+    const filter = tenantId
+      ? { _id: teamId, tenantId, 'members.user': userId }
+      : { _id: teamId, 'members.user': userId };
     const team = await Team.findOneAndUpdate(
-      { _id: teamId, tenantId, 'members.user': userId },
+      filter,
       { $set: { 'members.$.role': role } },
       { new: true }
-    );
+    ).populate('members.user', 'name email avatar');
     if (!team) throw ApiError.notFound('Team member not found');
     return team;
   }

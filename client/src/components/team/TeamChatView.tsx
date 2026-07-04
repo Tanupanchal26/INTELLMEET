@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Send, MessageSquare } from 'lucide-react';
 import { teamChatService, type TeamMessage } from '../../api/team.api';
 import { useAppSelector } from '../../hooks/useAppDispatch';
-import { useSocket, safeEmit } from '../../hooks/useSocket';
+import { useSocket } from '../../hooks/useSocket';
 import { TypingIndicator } from '../common/TypingIndicator';
 import { clsx } from 'clsx';
 
@@ -54,19 +54,30 @@ export const TeamChatView = ({ teamId, teamName }: TeamChatViewProps) => {
     staleTime: Infinity,
   });
 
-  /* ── Socket room join/leave ── */
+  /* ── Socket room join/leave + reconnect re-join ── */
   useEffect(() => {
     if (!socket || !teamId) return;
 
     socket.emit('team-chat:join', teamId);
 
+    // Re-join after reconnect
+    const onReconnect = () => socket.emit('team-chat:join', teamId);
+
     const onMessage  = (msg: TeamMessage) => {
       setMessages(prev => {
-        // Avoid duplicates
         if (prev.some(m => m._id === msg._id)) return prev;
         return [...prev, msg];
       });
     };
+
+    // Replace optimistic message with confirmed server message
+    const onConfirmed = ({ tempId, message }: { tempId: string; message: TeamMessage }) => {
+      setMessages(prev => {
+        if (prev.some(m => m._id === message._id)) return prev;
+        return prev.map(m => m._id === tempId ? { ...message, delivery: 'sent' as const } : m);
+      });
+    };
+
     const onTyping   = ({ userId: uid, name, isTyping }: { userId: string; name: string; isTyping: boolean }) => {
       if (uid === user?.id) return;
       setTypingUsers(prev =>
@@ -78,21 +89,20 @@ export const TeamChatView = ({ teamId, teamName }: TeamChatViewProps) => {
     const onReaction = ({ messageId, reactions }: { messageId: string; reactions: any[] }) => {
       setMessages(prev => prev.map(m => m._id === messageId ? { ...m, reactions } : m));
     };
-    const onDelivery = ({ messageId, state }: { messageId: string; state: any }) => {
-      setMessages(prev => prev.map(m => m._id === messageId ? { ...m, delivery: state } : m));
-    };
 
-    socket.on('team-chat:message',  onMessage);
-    socket.on('team-chat:typing',   onTyping);
-    socket.on('team-chat:reaction', onReaction);
-    socket.on('team-chat:delivery', onDelivery);
+    socket.on('connect',                     onReconnect);
+    socket.on('team-chat:message',           onMessage);
+    socket.on('team-chat:message:confirmed', onConfirmed);
+    socket.on('team-chat:typing',            onTyping);
+    socket.on('team-chat:reaction',          onReaction);
 
     return () => {
-      socket.off('team-chat:message',  onMessage);
-      socket.off('team-chat:typing',   onTyping);
-      socket.off('team-chat:reaction', onReaction);
-      socket.off('team-chat:delivery', onDelivery);
-      socket.emit('team-chat:leave',   teamId);
+      socket.off('connect',                     onReconnect);
+      socket.off('team-chat:message',           onMessage);
+      socket.off('team-chat:message:confirmed', onConfirmed);
+      socket.off('team-chat:typing',            onTyping);
+      socket.off('team-chat:reaction',          onReaction);
+      socket.emit('team-chat:leave', teamId);
     };
   }, [socket, teamId, user?.id]);
 
@@ -103,25 +113,26 @@ export const TeamChatView = ({ teamId, teamName }: TeamChatViewProps) => {
 
   /* ── Typing indicator ── */
   const handleTyping = useCallback(() => {
+    if (!socket) return;
     if (!isTypingRef.current) {
       isTypingRef.current = true;
-      safeEmit('team-chat:typing', { teamId, isTyping: true });
+      socket.emit('team-chat:typing', { teamId, isTyping: true });
     }
     if (typingTimer.current) clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(() => {
       isTypingRef.current = false;
-      safeEmit('team-chat:typing', { teamId, isTyping: false });
+      socket.emit('team-chat:typing', { teamId, isTyping: false });
     }, 2000);
-  }, [teamId]);
+  }, [socket, teamId]);
 
   /* ── Send message ── */
   const handleSend = useCallback(() => {
     const text = content.trim();
-    if (!text || !user) return;
+    if (!text || !user || !socket) return;
 
     if (isTypingRef.current) {
       isTypingRef.current = false;
-      safeEmit('team-chat:typing', { teamId, isTyping: false });
+      socket.emit('team-chat:typing', { teamId, isTyping: false });
       if (typingTimer.current) clearTimeout(typingTimer.current);
     }
 
@@ -143,14 +154,14 @@ export const TeamChatView = ({ teamId, teamName }: TeamChatViewProps) => {
     setMessages(prev => [...prev, optimistic]);
     setContent('');
 
-    safeEmit('team-chat:message', { teamId, content: text });
-  }, [content, user, teamId]);
+    socket.emit('team-chat:message', { teamId, content: text, tempId });
+  }, [content, user, teamId, socket]);
 
   /* ── React ── */
   const handleReact = useCallback((msgId: string, emoji: string) => {
-    safeEmit('team-chat:react', { teamId, messageId: msgId, emoji });
+    socket?.emit('team-chat:react', { teamId, messageId: msgId, emoji });
     setShowEmoji(false);
-  }, [teamId]);
+  }, [socket, teamId]);
 
   const typingNames = typingUsers.map(t => t.name);
 
