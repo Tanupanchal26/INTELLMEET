@@ -37,10 +37,11 @@ export const getClient = (): any => {
     return new MockOpenAI();
   }
   if (!_client) {
+    logger.info(`[AI] Initializing OpenAI client (key prefix: ${config.openai.apiKey.slice(0, 8)}…)`);
     _client = new OpenAI({
       apiKey:     config.openai.apiKey,
-      timeout:    60_000,  // 60s hard timeout per request
-      maxRetries: 3,       // built-in exponential back-off for 429/5xx
+      timeout:    60_000,
+      maxRetries: 0, // withRetry handles retries — avoid double-retrying
     });
   }
   return _client;
@@ -49,18 +50,29 @@ export const getClient = (): any => {
 // ── Retry wrapper with exponential back-off ───────────────────────────────────
 export const withRetry = async <T>(
   fn: () => Promise<T>,
-  retries = 3,
+  retries = 2,
   delayMs = 1000,
 ): Promise<T> => {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       return await fn();
     } catch (err: any) {
+      const status = err?.status ?? err?.statusCode;
+      const code   = err?.code   ?? err?.error?.code;
+
+      // Never retry quota exhaustion or auth errors — they will never succeed
+      const isFatal =
+        code === 'insufficient_quota' ||
+        status === 401 ||
+        status === 400;
+
       const isRetryable =
-        err?.status === 429 ||
-        err?.status === 503 ||
-        err?.code === 'ECONNRESET' ||
-        err?.code === 'ETIMEDOUT';
+        !isFatal && (
+          status === 429 ||
+          status === 503 ||
+          err?.code === 'ECONNRESET' ||
+          err?.code === 'ETIMEDOUT'
+        );
 
       if (!isRetryable || attempt === retries) throw err;
 

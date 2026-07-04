@@ -4,6 +4,40 @@ import ApiError, { type FieldError } from '../utils/ApiError';
 import logger from '../shared/utils/logger';
 import { HTTP, ENV } from '../constants';
 
+// Map OpenAI SDK error → meaningful HTTP status + message
+const normalizeOpenAIError = (err: any): ApiError | null => {
+  // OpenAI SDK throws APIError with .status, .code, .type
+  const status = err?.status ?? err?.statusCode;
+  const code   = err?.code   ?? err?.error?.code;
+  const type   = err?.type   ?? err?.error?.type;
+  const msg    = err?.message ?? err?.error?.message ?? 'OpenAI request failed';
+
+  if (!status && !code) return null; // not an OpenAI error
+
+  logger.error(
+    `[OpenAI Error] status=${status} type=${type} code=${code} message=${msg}`,
+    { stack: err?.stack }
+  );
+
+  if (status === 401 || code === 'invalid_api_key') {
+    return new ApiError(HTTP.UNAUTHORIZED, 'OpenAI API key is invalid or missing. Please check your configuration.');
+  }
+  if (code === 'insufficient_quota' || type === 'insufficient_quota') {
+    return new ApiError(HTTP.TOO_MANY_REQUESTS, 'OpenAI quota exceeded. Please check your billing at platform.openai.com.');
+  }
+  if (status === 429) {
+    return new ApiError(HTTP.TOO_MANY_REQUESTS, 'OpenAI rate limit reached. Please wait a moment and try again.');
+  }
+  if (status === 400) {
+    return new ApiError(HTTP.BAD_REQUEST, `OpenAI bad request: ${msg}`);
+  }
+  if (status === 503 || status === 500) {
+    return new ApiError(HTTP.SERVICE_UNAVAILABLE, 'OpenAI service is temporarily unavailable. Please try again shortly.');
+  }
+  // Any other OpenAI error — surface the real message, not a generic 500
+  return new ApiError(status ?? HTTP.INTERNAL_ERROR, `AI service error: ${msg}`);
+};
+
 const normalizeError = (err: unknown): ApiError => {
   if (err instanceof ApiError) return err;
 
@@ -33,6 +67,11 @@ const normalizeError = (err: unknown): ApiError => {
   if (err instanceof Error) {
     if (err.name === 'JsonWebTokenError') return ApiError.unauthorized('Invalid token');
     if (err.name === 'TokenExpiredError')  return ApiError.unauthorized('Token expired');
+
+    // Check for OpenAI SDK errors before falling through to generic 500
+    const openAIErr = normalizeOpenAIError(err);
+    if (openAIErr) return openAIErr;
+
     logger.error(`[UNCAUGHT ERROR] ${err.message}`, { stack: err.stack });
   }
 
