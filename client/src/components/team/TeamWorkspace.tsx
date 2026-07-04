@@ -106,7 +106,7 @@ const TaskCard = ({
 
           <select
             value={task.assignedTo?._id ?? ''}
-            onChange={e => onUpdate(task._id, { assignedTo: e.target.value ? { _id: e.target.value, name: '', email: '' } : undefined })}
+            onChange={e => onUpdate(task._id, { assignedTo: (e.target.value || undefined) as any })}
             className="text-xs border border-[var(--color-border)] rounded-lg px-2 py-1 bg-[var(--color-surface)] text-[var(--color-text)] outline-none cursor-pointer"
           >
             <option value="">Unassigned</option>
@@ -144,7 +144,7 @@ const AddTaskForm = ({
 
   const submit = () => {
     if (!title.trim()) return;
-    onAdd({ title: title.trim(), status, priority, assignedTo: assignee ? { _id: assignee, name: '', email: '' } : undefined, dueDate: dueDate || undefined });
+    onAdd({ title: title.trim(), status, priority, assignedTo: assignee || undefined, dueDate: dueDate || undefined });
     onCancel();
   };
 
@@ -267,8 +267,21 @@ const TeamWorkspace = () => {
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<Task>) => taskService.createTeamTask(teamId!, data),
-    onSuccess: invalidate,
-    onError: () => toast.error('Failed to create task'),
+    onMutate: async (data) => {
+      await qc.cancelQueries({ queryKey: ['team-tasks', teamId] });
+      const prev = qc.getQueryData<Task[]>(['team-tasks', teamId]);
+      qc.setQueryData<Task[]>(['team-tasks', teamId], (old = []) => [
+        { _id: `temp-${Date.now()}`, createdAt: new Date().toISOString(), ...data } as Task,
+        ...old,
+      ]);
+      return { prev };
+    },
+    onError: (_err, _vars, ctx: any) => {
+      if (ctx?.prev) qc.setQueryData(['team-tasks', teamId], ctx.prev);
+      toast.error('Failed to create task');
+    },
+    onSuccess: () => toast.success('Task added'),
+    onSettled: invalidate,
   });
 
   const updateMutation = useMutation({
