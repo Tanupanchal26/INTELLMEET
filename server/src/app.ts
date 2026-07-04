@@ -77,9 +77,15 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
-const redisClient = process.env.REDIS_URL
-  ? new Redis(process.env.REDIS_URL)
-  : null;
+let redisClient: Redis | null = null;
+try {
+  if (process.env.REDIS_URL) {
+    redisClient = new Redis(process.env.REDIS_URL, { lazyConnect: true, enableOfflineQueue: false });
+    redisClient.on('error', (err) => console.warn('[Redis] connection error:', err.message));
+  }
+} catch (e) {
+  console.warn('[Redis] failed to initialize, sessions will use memory store');
+}
 
 app.use(session({
   store:             redisClient ? new RedisStore({ client: redisClient }) : undefined,
