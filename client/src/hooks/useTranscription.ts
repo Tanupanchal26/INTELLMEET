@@ -10,10 +10,10 @@ const MIN_AUDIO_BYTES  = 1000;  // skip silent/empty chunks
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export const useTranscription = (meetingId: string) => {
-  const { isMuted } = useMeetingStore();
-  const store = useAIStore();
-  const setTranscribing = useCallback((v: boolean) => store.setTranscribing(meetingId, v), [store, meetingId]);
-  const appendTranscript = useCallback((chunk: string) => store.appendTranscript(meetingId, chunk), [store, meetingId]);
+  const isMuted = useMeetingStore((s) => s.isMuted);
+  // Read actions directly from getState() so they are never in useCallback deps
+  const setTranscribing  = useCallback((v: boolean) => useAIStore.getState().setTranscribing(meetingId, v),  [meetingId]);
+  const appendTranscript = useCallback((chunk: string) => useAIStore.getState().appendTranscript(meetingId, chunk), [meetingId]);
   const user   = useAppSelector((s) => s.auth.user);
   const socket = getSocket();
 

@@ -169,8 +169,10 @@ const MeetingRoom = () => {
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, panelOpen);
 
-  const { setCurrentMeeting, isRecording, currentMeeting } = useMeetingStore();
-  const { clearMeetingAI } = useAIStore();
+  const setCurrentMeeting = useMeetingStore((s) => s.setCurrentMeeting);
+  const isRecording       = useMeetingStore((s) => s.isRecording);
+  const currentMeeting    = useMeetingStore((s) => s.currentMeeting);
+  const clearMeetingAI    = useAIStore((s) => s.clearMeetingAI);
   const { localStreamRef, localStream, remoteStreams, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks } = useWebRTC({ roomId: socketRoomId, userId: user?.id ?? '' });
   
   useTranscription(id ?? '');
