@@ -1,6 +1,6 @@
 // @ts-nocheck
 const asyncHandler           = require('../../utils/asyncHandler');
-const ApiResponse            = require('../../utils/ApiResponse');
+const { ApiResponse }        = require('../../utils/ApiResponse');
 const ApiError               = require('../../utils/ApiError');
 const AIResult               = require('../../models/AIResult');
 const Task                   = require('../../models/Task');
@@ -170,22 +170,9 @@ exports.generateMinutes = asyncHandler(async (req, res) => {
     );
   }
 
-  const job = await enqueueAIJob('minutes', {
-    meetingId:    req.params.meetingId,
-    tenantId:     req.user?.tenantId,
-    title:        title        || 'Meeting',
-    participants: participants || [],
-    date:         date         || new Date().toISOString(),
-  });
-
-  if (job) {
-    return res.status(202).json(
-      new ApiResponse(202, `Minutes generation queued (job: ${job.id})`, { jobId: job.id })
-    );
-  }
-
+  // Always run synchronously — the frontend has no job-polling mechanism
   const minutes = await aiService.generateMeetingMinutes(req.params.meetingId);
-  return ApiResponse.ok(res, { minutes }, 'Minutes generated');
+  return ApiResponse.ok(res, { minutes: minutes || '' }, 'Minutes generated');
 });
 
 // ── POST /ai/:meetingId/assistant ─────────────────────────────────────────────

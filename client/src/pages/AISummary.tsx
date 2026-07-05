@@ -106,25 +106,65 @@ const AISummary = () => {
     if (!selectedId) return;
     store.setGenerating(true);
     try {
-      const sRes: any = await aiService.generateSummary(selectedId, '');
-      store.setSummary(sRes?.data?.summary ?? sRes?.summary ?? '');
+      // Fetch transcript first so the backend has content to summarise
+      let transcript = '';
+      try {
+        const tRes: any = await aiService.getTranscript(selectedId);
+        const tData = tRes?.data ?? tRes;
+        transcript = tData?.transcript?.trim() ?? '';
+        if (!transcript) {
+          const chunks = tData?.allChunks ?? tData?.chunks ?? [];
+          if (chunks.length > 0) {
+            transcript = chunks.map((c: any) => `${c.speaker ?? 'Speaker'}: ${c.text}`).join('\n');
+          }
+        }
+      } catch { /* no transcript yet — demo mode will still generate */ }
+
+      const sRes: any = await aiService.generateSummary(selectedId, transcript);
+      // axios interceptor unwraps res.data → ApiResponse envelope { data: { summary } }
+      const generatedSummary: string = sRes?.data?.summary ?? sRes?.summary ?? '';
+      store.setSummary(generatedSummary);
+
       const aRes: any = await aiService.getActionItems(selectedId);
       store.setActionItems(aRes?.data?.actionItems ?? aRes?.actionItems ?? []);
       toast.success('Summary generated');
-    } catch (err: any) { toast.error(err.message || 'Failed to generate summary'); }
-    finally { store.setGenerating(false); }
+    } catch (err: any) {
+      const raw = err?.response?.data?.message || err?.message || '';
+      const msg = raw.includes('429') || raw.includes('quota')
+        ? 'AI quota exceeded. Please check your billing.'
+        : raw || 'Failed to generate summary';
+      toast.error(msg, { duration: 6000 });
+    } finally {
+      store.setGenerating(false);
+    }
   };
 
   const handleGenerateMinutes = async () => {
     if (!selectedId) return;
     try {
-      const tRes: any = await aiService.getTranscript(selectedId);
-      const transcript: string = tRes?.data?.transcript ?? tRes?.transcript ?? '';
+      let transcript = '';
+      try {
+        const tRes: any = await aiService.getTranscript(selectedId);
+        const tData = tRes?.data ?? tRes;
+        transcript = tData?.transcript?.trim() ?? '';
+        if (!transcript) {
+          const chunks = tData?.allChunks ?? tData?.chunks ?? [];
+          if (chunks.length > 0) {
+            transcript = chunks.map((c: any) => `${c.speaker ?? 'Speaker'}: ${c.text}`).join('\n');
+          }
+        }
+      } catch { /* no transcript yet — demo mode will still generate */ }
+
       const res: any = await aiService.generateMinutes(selectedId, transcript || undefined);
-      store.setMinutes(res?.data?.minutes ?? res?.minutes ?? '');
+      // axios interceptor unwraps res.data → ApiResponse envelope { data: { minutes } }
+      const generatedMinutes: string = res?.data?.minutes ?? res?.minutes ?? '';
+      store.setMinutes(generatedMinutes);
       setActiveTab('minutes');
       toast.success('Minutes generated');
-    } catch { toast.error('Failed to generate minutes'); }
+    } catch (err: any) {
+      const raw = err?.response?.data?.message || err?.message || '';
+      toast.error(raw || 'Failed to generate minutes', { duration: 6000 });
+    }
   };
 
   const handleChat = async (msg: string) => {

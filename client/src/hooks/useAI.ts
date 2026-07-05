@@ -84,15 +84,17 @@ export const useAI = (meetingId: string) => {
         return;
       }
 
-      const { data } = await aiService.generateSummary(meetingId, transcript);
+      const res = await aiService.generateSummary(meetingId, transcript);
+      // axios interceptor unwraps res.data → ApiResponse envelope { data: { summary } }
+      const summary: string = (res as any)?.data?.summary ?? (res as any)?.summary ?? '';
 
-      if (!data?.summary) {
+      if (!summary) {
         toast.error('Summary generation failed — the AI returned an empty response.');
         store.setGenerating(false);
         return;
       }
 
-      store.setSummary(data.summary);
+      store.setSummary(summary);
 
       // Fetch action items in parallel — don't block on failure
       aiService.getActionItems(meetingId)
@@ -113,8 +115,10 @@ export const useAI = (meetingId: string) => {
 
   const generateMinutes = useCallback(async () => {
     try {
-      const { data } = await aiService.generateMinutes(meetingId);
-      store.setMinutes(data.minutes);
+      const res = await aiService.generateMinutes(meetingId);
+      // axios interceptor unwraps res.data → ApiResponse envelope { data: { minutes } }
+      const minutes: string = (res as any)?.data?.minutes ?? (res as any)?.minutes ?? '';
+      store.setMinutes(minutes);
     } catch {
       toast.error('Failed to generate minutes');
     }
