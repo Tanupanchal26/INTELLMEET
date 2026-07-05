@@ -9,19 +9,22 @@ import Button from '../common/Button';
 const SummaryCard = ({ meetingId }: { meetingId: string }) => {
   const { summary, isGenerating, generateSummary, setSummary } = useAI(meetingId);
 
-  // Use TanStack Query so the result is cached — no re-fetch on panel switch
+  // Fetch persisted summary for this specific meeting — queryKey includes meetingId
+  // so React Query never serves a cached result from a different meeting.
   const { data } = useQuery({
     queryKey: ['meeting-summary', meetingId],
     queryFn: () => aiService.getSummary(meetingId).then((r) => r.data),
+    // Only auto-fetch if we don't already have an in-memory summary for THIS meeting
     enabled: !!meetingId && !summary,
     staleTime: 30 * 60_000,
     gcTime: 60 * 60_000,
+    // Do NOT use placeholderData — we never want another meeting's summary shown here
   });
 
-  // Sync fetched summary into the AI store once
+  // Sync fetched summary into the per-meeting store slot (only once, only for this meeting)
   useEffect(() => {
     if (data?.summary && !summary) setSummary(data.summary);
-  }, [data?.summary, summary, setSummary]);
+  }, [data?.summary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="p-3 flex flex-col gap-3 h-full">

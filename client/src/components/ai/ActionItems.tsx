@@ -14,21 +14,22 @@ const PRIORITY_BADGE = {
 const ActionItems = ({ meetingId }: { meetingId: string }) => {
   const { actionItems, isGenerating, setActionItems, toggleActionItemDone } = useAI(meetingId);
 
-  // Use TanStack Query so action items are cached — no re-fetch on panel switch
+  // queryKey includes meetingId — React Query never serves another meeting's cache
   const { data } = useQuery({
     queryKey: ['meeting-action-items', meetingId],
     queryFn: () => aiService.getActionItems(meetingId).then((r) => r.data),
     enabled: !!meetingId && actionItems.length === 0,
     staleTime: 30 * 60_000,
     gcTime: 60 * 60_000,
+    // No placeholderData — never show stale items from a previous meeting
   });
 
-  // Sync fetched action items into the AI store once
+  // Sync fetched items into the per-meeting store slot (only once, only for this meeting)
   useEffect(() => {
     if (data?.actionItems?.length && actionItems.length === 0) {
       setActionItems(data.actionItems);
     }
-  }, [data?.actionItems, actionItems.length, setActionItems]);
+  }, [data?.actionItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isGenerating) return (
     <div className="flex items-center justify-center h-full gap-2">

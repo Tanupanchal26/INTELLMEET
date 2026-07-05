@@ -1,9 +1,9 @@
-import { useAIStore } from '../../store/ai/ai.store';
+import { useAI } from '../../hooks/useAI';
 import { Mic, MicOff } from 'lucide-react';
 import { clsx } from 'clsx';
 
-const TranscriptPanel = () => {
-  const { transcript, isTranscribing } = useAIStore();
+const TranscriptPanel = ({ meetingId }: { meetingId: string }) => {
+  const { transcript, isTranscribing } = useAI(meetingId);
   return (
     <div className="flex flex-col h-full p-3 gap-3">
       <div className="flex items-center justify-between">

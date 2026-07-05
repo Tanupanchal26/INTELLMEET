@@ -11,96 +11,183 @@ export interface AssistantMessage {
 // AISummary page state — persisted across navigation so the page never reloads
 export type AISummaryTab = 'summary' | 'actions' | 'minutes' | 'followup';
 
-interface AIState {
+// ── Per-meeting isolated state ────────────────────────────────────────────────
+// Every field that belongs to a specific meeting is stored in a map keyed by
+// meetingId. Global fields (search, page-level UI) remain flat.
+interface MeetingAIData {
   transcript: string;
   summary: string;
   minutes: string;
   actionItems: ActionItem[];
   assistantHistory: AssistantMessage[];
-  searchResults: SearchResult[];
   isGenerating: boolean;
   isTranscribing: boolean;
-  isSearching: boolean;
   isAssistantLoading: boolean;
-
-  // AISummary page persistent state
-  aiPageSelectedId: string | null;
-  aiPageActiveTab: AISummaryTab;
-  aiPageChatHistory: { role: string; content: string }[];
-  aiPageSearchQuery: string;
-  aiPageSearchResults: any[];
-  aiPageFollowUpSuggestions: any[];
-
-  appendTranscript:     (chunk: string) => void;
-  setSummary:           (s: string) => void;
-  setMinutes:           (m: string) => void;
-  setActionItems:       (items: ActionItem[]) => void;
-  toggleActionItemDone: (idx: number) => void;
-  addAssistantMessage:  (msg: AssistantMessage) => void;
-  setSearchResults:     (r: SearchResult[]) => void;
-  setGenerating:        (v: boolean) => void;
-  setTranscribing:      (v: boolean) => void;
-  setSearching:         (v: boolean) => void;
-  setAssistantLoading:  (v: boolean) => void;
-  clearAI:              () => void;
-
-  // AISummary page setters
-  setAIPageSelectedId:          (id: string | null) => void;
-  setAIPageActiveTab:           (tab: AISummaryTab) => void;
-  setAIPageChatHistory:         (h: { role: string; content: string }[]) => void;
-  appendAIPageChatMessage:      (msg: { role: string; content: string }) => void;
-  setAIPageSearchQuery:         (q: string) => void;
-  setAIPageSearchResults:       (r: any[]) => void;
-  setAIPageFollowUpSuggestions: (s: any[]) => void;
 }
 
-export const useAIStore = create<AIState>((set) => ({
+const defaultMeetingData = (): MeetingAIData => ({
   transcript: '',
   summary: '',
   minutes: '',
   actionItems: [],
   assistantHistory: [],
-  searchResults: [],
   isGenerating: false,
   isTranscribing: false,
-  isSearching: false,
   isAssistantLoading: false,
+});
 
-  // AISummary page persistent state defaults
+interface AIState {
+  // Per-meeting data — keyed by meetingId
+  meetingData: Record<string, MeetingAIData>;
+
+  // Global search state (not meeting-specific)
+  searchResults: SearchResult[];
+  isSearching: boolean;
+
+  // AISummary page persistent state (page-level UI, not meeting-specific)
+  aiPageSelectedId: string | null;
+  aiPageActiveTab: AISummaryTab;
+  aiPageChatHistory: Record<string, { role: string; content: string }[]>;
+  aiPageSearchQuery: string;
+  aiPageSearchResults: any[];
+  aiPageFollowUpSuggestions: Record<string, any[]>;
+
+  // ── Per-meeting accessors ──────────────────────────────────────────────────
+  getMeetingData: (meetingId: string) => MeetingAIData;
+
+  appendTranscript:     (meetingId: string, chunk: string) => void;
+  setSummary:           (meetingId: string, s: string) => void;
+  setMinutes:           (meetingId: string, m: string) => void;
+  setActionItems:       (meetingId: string, items: ActionItem[]) => void;
+  toggleActionItemDone: (meetingId: string, idx: number) => void;
+  addAssistantMessage:  (meetingId: string, msg: AssistantMessage) => void;
+  setGenerating:        (meetingId: string, v: boolean) => void;
+  setTranscribing:      (meetingId: string, v: boolean) => void;
+  setAssistantLoading:  (meetingId: string, v: boolean) => void;
+
+  /** Wipe all AI data for a specific meeting (call on leave/end) */
+  clearMeetingAI: (meetingId: string) => void;
+  /** Legacy no-arg clearAI — clears the currently selected meeting */
+  clearAI: () => void;
+
+  // ── Global search ──────────────────────────────────────────────────────────
+  setSearchResults: (r: SearchResult[]) => void;
+  setSearching:     (v: boolean) => void;
+
+  // ── AISummary page setters ─────────────────────────────────────────────────
+  setAIPageSelectedId:          (id: string | null) => void;
+  setAIPageActiveTab:           (tab: AISummaryTab) => void;
+  getAIPageChatHistory:         (meetingId: string) => { role: string; content: string }[];
+  setAIPageChatHistory:         (meetingId: string, h: { role: string; content: string }[]) => void;
+  appendAIPageChatMessage:      (meetingId: string, msg: { role: string; content: string }) => void;
+  setAIPageSearchQuery:         (q: string) => void;
+  setAIPageSearchResults:       (r: any[]) => void;
+  getAIPageFollowUpSuggestions: (meetingId: string) => any[];
+  setAIPageFollowUpSuggestions: (meetingId: string, s: any[]) => void;
+}
+
+// ── Helper: immutably update a single meeting's data ─────────────────────────
+const updateMeeting = (
+  state: AIState,
+  meetingId: string,
+  patch: Partial<MeetingAIData>,
+): Pick<AIState, 'meetingData'> => ({
+  meetingData: {
+    ...state.meetingData,
+    [meetingId]: { ...(state.meetingData[meetingId] ?? defaultMeetingData()), ...patch },
+  },
+});
+
+export const useAIStore = create<AIState>((set, get) => ({
+  meetingData: {},
+  searchResults: [],
+  isSearching: false,
   aiPageSelectedId: null,
   aiPageActiveTab: 'summary',
-  aiPageChatHistory: [],
+  aiPageChatHistory: {},
   aiPageSearchQuery: '',
   aiPageSearchResults: [],
-  aiPageFollowUpSuggestions: [],
+  aiPageFollowUpSuggestions: {},
 
-  appendTranscript:     (chunk) => set((s) => ({ transcript: s.transcript + '\n' + chunk })),
-  setSummary:           (summary) => set({ summary }),
-  setMinutes:           (minutes) => set({ minutes }),
-  setActionItems:       (actionItems) => set({ actionItems }),
-  toggleActionItemDone: (idx) => set((s) => {
-    const actionItems = [...s.actionItems];
-    if (actionItems[idx]) actionItems[idx] = { ...actionItems[idx], done: !actionItems[idx].done };
-    return { actionItems };
-  }),
-  addAssistantMessage:  (msg) => set((s) => ({ assistantHistory: [...s.assistantHistory, msg] })),
-  setSearchResults:     (searchResults) => set({ searchResults }),
-  setGenerating:        (isGenerating) => set({ isGenerating }),
-  setTranscribing:      (isTranscribing) => set({ isTranscribing }),
-  setSearching:         (isSearching) => set({ isSearching }),
-  setAssistantLoading:  (isAssistantLoading) => set({ isAssistantLoading }),
-  clearAI: () => set({
-    transcript: '', summary: '', minutes: '', actionItems: [],
-    assistantHistory: [], searchResults: [],
-    isGenerating: false, isTranscribing: false, isSearching: false, isAssistantLoading: false,
-  }),
+  getMeetingData: (meetingId) =>
+    get().meetingData[meetingId] ?? defaultMeetingData(),
 
-  // AISummary page setters
-  setAIPageSelectedId:          (aiPageSelectedId) => set({ aiPageSelectedId }),
-  setAIPageActiveTab:           (aiPageActiveTab) => set({ aiPageActiveTab }),
-  setAIPageChatHistory:         (aiPageChatHistory) => set({ aiPageChatHistory }),
-  appendAIPageChatMessage:      (msg) => set((s) => ({ aiPageChatHistory: [...s.aiPageChatHistory, msg] })),
-  setAIPageSearchQuery:         (aiPageSearchQuery) => set({ aiPageSearchQuery }),
-  setAIPageSearchResults:       (aiPageSearchResults) => set({ aiPageSearchResults }),
-  setAIPageFollowUpSuggestions: (aiPageFollowUpSuggestions) => set({ aiPageFollowUpSuggestions }),
+  appendTranscript: (meetingId, chunk) =>
+    set((s) => updateMeeting(s, meetingId, {
+      transcript: (s.meetingData[meetingId]?.transcript ?? '') + '\n' + chunk,
+    })),
+
+  setSummary: (meetingId, summary) =>
+    set((s) => updateMeeting(s, meetingId, { summary })),
+
+  setMinutes: (meetingId, minutes) =>
+    set((s) => updateMeeting(s, meetingId, { minutes })),
+
+  setActionItems: (meetingId, actionItems) =>
+    set((s) => updateMeeting(s, meetingId, { actionItems })),
+
+  toggleActionItemDone: (meetingId, idx) =>
+    set((s) => {
+      const items = [...(s.meetingData[meetingId]?.actionItems ?? [])];
+      if (items[idx]) items[idx] = { ...items[idx], done: !items[idx].done };
+      return updateMeeting(s, meetingId, { actionItems: items });
+    }),
+
+  addAssistantMessage: (meetingId, msg) =>
+    set((s) => updateMeeting(s, meetingId, {
+      assistantHistory: [...(s.meetingData[meetingId]?.assistantHistory ?? []), msg],
+    })),
+
+  setGenerating: (meetingId, isGenerating) =>
+    set((s) => updateMeeting(s, meetingId, { isGenerating })),
+
+  setTranscribing: (meetingId, isTranscribing) =>
+    set((s) => updateMeeting(s, meetingId, { isTranscribing })),
+
+  setAssistantLoading: (meetingId, isAssistantLoading) =>
+    set((s) => updateMeeting(s, meetingId, { isAssistantLoading })),
+
+  clearMeetingAI: (meetingId) =>
+    set((s) => {
+      const { [meetingId]: _removed, ...rest } = s.meetingData;
+      const { [meetingId]: _chat, ...restChat } = s.aiPageChatHistory;
+      const { [meetingId]: _fu, ...restFu } = s.aiPageFollowUpSuggestions;
+      return { meetingData: rest, aiPageChatHistory: restChat, aiPageFollowUpSuggestions: restFu };
+    }),
+
+  clearAI: () => {
+    const selectedId = get().aiPageSelectedId;
+    if (selectedId) get().clearMeetingAI(selectedId);
+  },
+
+  setSearchResults: (searchResults) => set({ searchResults }),
+  setSearching:     (isSearching)   => set({ isSearching }),
+
+  setAIPageSelectedId: (aiPageSelectedId) => set({ aiPageSelectedId }),
+  setAIPageActiveTab:  (aiPageActiveTab)  => set({ aiPageActiveTab }),
+
+  getAIPageChatHistory: (meetingId) =>
+    get().aiPageChatHistory[meetingId] ?? [],
+
+  setAIPageChatHistory: (meetingId, h) =>
+    set((s) => ({ aiPageChatHistory: { ...s.aiPageChatHistory, [meetingId]: h } })),
+
+  appendAIPageChatMessage: (meetingId, msg) =>
+    set((s) => ({
+      aiPageChatHistory: {
+        ...s.aiPageChatHistory,
+        [meetingId]: [...(s.aiPageChatHistory[meetingId] ?? []), msg],
+      },
+    })),
+
+  setAIPageSearchQuery:   (aiPageSearchQuery)   => set({ aiPageSearchQuery }),
+  setAIPageSearchResults: (aiPageSearchResults) => set({ aiPageSearchResults }),
+
+  getAIPageFollowUpSuggestions: (meetingId) =>
+    get().aiPageFollowUpSuggestions[meetingId] ?? [],
+
+  setAIPageFollowUpSuggestions: (meetingId, suggestions) =>
+    set((s) => ({
+      aiPageFollowUpSuggestions: { ...s.aiPageFollowUpSuggestions, [meetingId]: suggestions },
+    })),
 }));

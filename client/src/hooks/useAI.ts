@@ -9,96 +9,102 @@ export const useAI = (meetingId: string) => {
   const { socket } = useSocket();
   const store = useAIStore();
 
-  // ── Socket listeners ────────────────────────────────────────────────────────
+  // Derive per-meeting state — always scoped to this meetingId
+  const meetingData    = store.getMeetingData(meetingId);
+  const transcript     = meetingData.transcript;
+  const summary        = meetingData.summary;
+  const minutes        = meetingData.minutes;
+  const actionItems    = meetingData.actionItems;
+  const assistantHistory    = meetingData.assistantHistory;
+  const isGenerating        = meetingData.isGenerating;
+  const isTranscribing      = meetingData.isTranscribing;
+  const isAssistantLoading  = meetingData.isAssistantLoading;
+
+  // ── Socket listeners — scoped to this meetingId ───────────────────────────
   useEffect(() => {
     if (!socket || !meetingId) return;
 
-    const onTranscriptChunk = ({ chunk }: { chunk: string }) => store.appendTranscript(chunk);
-    const onSummaryReady = ({ summary, actionItems }: { summary: string; actionItems: ActionItem[] }) => {
-      store.setSummary(summary);
-      store.setActionItems(actionItems);
-      store.setGenerating(false);
+    const onTranscriptChunk = ({ chunk }: { chunk: string }) =>
+      store.appendTranscript(meetingId, chunk);
+
+    const onSummaryReady = ({ summary: s, actionItems: ai }: { summary: string; actionItems: ActionItem[] }) => {
+      store.setSummary(meetingId, s);
+      store.setActionItems(meetingId, ai);
+      store.setGenerating(meetingId, false);
       toast.success('AI summary ready!');
     };
-    const onMinutesReady = ({ minutes }: { minutes: string }) => {
-      store.setMinutes(minutes);
+
+    const onMinutesReady = ({ minutes: m }: { minutes: string }) => {
+      store.setMinutes(meetingId, m);
       toast.success('Meeting minutes generated!');
     };
+
     const onProcessing = ({ step }: { step: string }) => {
-      store.setGenerating(true);
+      store.setGenerating(meetingId, true);
       toast.loading(`AI is generating ${step}...`, { id: 'ai-processing' });
     };
+
     const onAIError = ({ message }: { message: string }) => {
-      store.setGenerating(false);
+      store.setGenerating(meetingId, false);
       toast.error(message, { id: 'ai-processing' });
     };
+
     const onAssistantReply = ({ reply }: { reply: string }) => {
-      store.addAssistantMessage({ role: 'assistant', content: reply });
-      store.setAssistantLoading(false);
+      store.addAssistantMessage(meetingId, { role: 'assistant', content: reply });
+      store.setAssistantLoading(meetingId, false);
     };
 
     socket.on('meeting:transcript-chunk', onTranscriptChunk);
-    socket.on('ai:summary-ready',        onSummaryReady);
-    socket.on('ai:minutes-ready',        onMinutesReady);
-    socket.on('ai:processing',           onProcessing);
-    socket.on('ai:error',                onAIError);
-    socket.on('ai:assistant-reply',      onAssistantReply);
+    socket.on('ai:summary-ready',         onSummaryReady);
+    socket.on('ai:minutes-ready',         onMinutesReady);
+    socket.on('ai:processing',            onProcessing);
+    socket.on('ai:error',                 onAIError);
+    socket.on('ai:assistant-reply',       onAssistantReply);
 
     return () => {
       socket.off('meeting:transcript-chunk', onTranscriptChunk);
-      socket.off('ai:summary-ready',        onSummaryReady);
-      socket.off('ai:minutes-ready',        onMinutesReady);
-      socket.off('ai:processing',           onProcessing);
-      socket.off('ai:error',                onAIError);
-      socket.off('ai:assistant-reply',      onAssistantReply);
+      socket.off('ai:summary-ready',         onSummaryReady);
+      socket.off('ai:minutes-ready',         onMinutesReady);
+      socket.off('ai:processing',            onProcessing);
+      socket.off('ai:error',                 onAIError);
+      socket.off('ai:assistant-reply',       onAssistantReply);
     };
-  }, [socket, meetingId, store]);
+  }, [socket, meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── REST actions ────────────────────────────────────────────────────────────
+  // ── REST actions ──────────────────────────────────────────────────────────
   const generateSummary = useCallback(async () => {
-    store.setGenerating(true);
+    store.setGenerating(meetingId, true);
     try {
-      // 1. Try REST transcript first (consolidated after meeting ends)
       const { data: tData } = await aiService.getTranscript(meetingId);
 
-      // 2. Fall back to in-memory transcript chunks streamed during the live meeting
-      //    tData.transcript is empty during live meetings — chunks are the source of truth
-      let transcript = tData?.transcript?.trim() ?? '';
-      if (!transcript) {
-        // Build from allChunks (full list) or paged chunks
+      let tx = tData?.transcript?.trim() ?? '';
+      if (!tx) {
         const chunks = tData?.allChunks ?? tData?.chunks ?? [];
         if (chunks.length > 0) {
-          transcript = chunks.map((c: any) => `${c.speaker ?? 'Speaker'}: ${c.text}`).join('\n');
+          tx = chunks.map((c: any) => `${c.speaker ?? 'Speaker'}: ${c.text}`).join('\n');
         }
       }
+      if (!tx) tx = transcript?.trim() ?? '';
 
-      // 3. Fall back to the live in-memory transcript from the AI store
-      //    (populated by socket meeting:transcript-chunk events during the call)
-      if (!transcript) {
-        transcript = store.transcript?.trim() ?? '';
-      }
-
-      if (!transcript) {
+      if (!tx) {
         toast.error('No transcript available yet. Start speaking or enable transcription first.');
-        store.setGenerating(false);
+        store.setGenerating(meetingId, false);
         return;
       }
 
-      const res = await aiService.generateSummary(meetingId, transcript);
-      // axios interceptor unwraps res.data → ApiResponse envelope { data: { summary } }
-      const summary: string = (res as any)?.data?.summary ?? (res as any)?.summary ?? '';
+      const res = await aiService.generateSummary(meetingId, tx);
+      const s: string = (res as any)?.data?.summary ?? (res as any)?.summary ?? '';
 
-      if (!summary) {
+      if (!s) {
         toast.error('Summary generation failed — the AI returned an empty response.');
-        store.setGenerating(false);
+        store.setGenerating(meetingId, false);
         return;
       }
 
-      store.setSummary(summary);
+      store.setSummary(meetingId, s);
 
-      // Fetch action items in parallel — don't block on failure
       aiService.getActionItems(meetingId)
-        .then(({ data: ai }) => store.setActionItems(ai.actionItems ?? []))
+        .then(({ data: ai }) => store.setActionItems(meetingId, ai.actionItems ?? []))
         .catch(() => {});
 
       toast.success('Summary generated!');
@@ -109,41 +115,39 @@ export const useAI = (meetingId: string) => {
         : raw || 'Failed to generate summary';
       toast.error(msg, { duration: 6000 });
     } finally {
-      store.setGenerating(false);
+      store.setGenerating(meetingId, false);
     }
-  }, [meetingId, store]);
+  }, [meetingId, transcript]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generateMinutes = useCallback(async () => {
     try {
       const res = await aiService.generateMinutes(meetingId);
-      // axios interceptor unwraps res.data → ApiResponse envelope { data: { minutes } }
-      const minutes: string = (res as any)?.data?.minutes ?? (res as any)?.minutes ?? '';
-      store.setMinutes(minutes);
+      const m: string = (res as any)?.data?.minutes ?? (res as any)?.minutes ?? '';
+      store.setMinutes(meetingId, m);
     } catch {
       toast.error('Failed to generate minutes');
     }
-  }, [meetingId, store]);
+  }, [meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendAssistantMessage = useCallback(async (message: string) => {
-    store.addAssistantMessage({ role: 'user', content: message });
-    store.setAssistantLoading(true);
+    store.addAssistantMessage(meetingId, { role: 'user', content: message });
+    store.setAssistantLoading(meetingId, true);
 
-    // Use socket if in-meeting, otherwise REST
     if (socket?.connected) {
-      const history = store.assistantHistory.map(m => ({ role: m.role, content: m.content }));
+      const history = assistantHistory.map((m) => ({ role: m.role, content: m.content }));
       socket.emit('ai:assistant-message', { meetingId, message, history });
     } else {
       try {
-        const history = store.assistantHistory.map(m => ({ role: m.role, content: m.content }));
+        const history = assistantHistory.map((m) => ({ role: m.role, content: m.content }));
         const { data } = await aiService.assistantChat(meetingId, message, history);
-        store.addAssistantMessage({ role: 'assistant', content: data.reply });
+        store.addAssistantMessage(meetingId, { role: 'assistant', content: data.reply });
       } catch {
         toast.error('Assistant unavailable');
       } finally {
-        store.setAssistantLoading(false);
+        store.setAssistantLoading(meetingId, false);
       }
     }
-  }, [socket, meetingId, store]);
+  }, [socket, meetingId, assistantHistory]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const searchMeetings = useCallback(async (query: string) => {
     if (!query.trim()) return;
@@ -156,7 +160,7 @@ export const useAI = (meetingId: string) => {
     } finally {
       store.setSearching(false);
     }
-  }, [store]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendTranscriptChunk = useCallback((chunk: string) => {
     if (!socket || !chunk.trim()) return;
@@ -164,12 +168,31 @@ export const useAI = (meetingId: string) => {
   }, [socket, meetingId]);
 
   return {
-    ...store,
+    // Per-meeting state
+    transcript,
+    summary,
+    minutes,
+    actionItems,
+    assistantHistory,
+    isGenerating,
+    isTranscribing,
+    isAssistantLoading,
+    // Global state
+    searchResults: store.searchResults,
+    isSearching:   store.isSearching,
+    // Actions
     generateSummary,
     generateMinutes,
     sendAssistantMessage,
     searchMeetings,
     sendTranscriptChunk,
-    setActionItems: store.setActionItems,
+    setSummary:           (s: string)           => store.setSummary(meetingId, s),
+    setMinutes:           (m: string)           => store.setMinutes(meetingId, m),
+    setActionItems:       (items: ActionItem[]) => store.setActionItems(meetingId, items),
+    toggleActionItemDone: (idx: number)         => store.toggleActionItemDone(meetingId, idx),
+    setGenerating:        (v: boolean)          => store.setGenerating(meetingId, v),
+    setTranscribing:      (v: boolean)          => store.setTranscribing(meetingId, v),
+    setAssistantLoading:  (v: boolean)          => store.setAssistantLoading(meetingId, v),
+    clearMeetingAI:       ()                    => store.clearMeetingAI(meetingId),
   };
 };

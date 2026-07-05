@@ -13,6 +13,7 @@ const SUGGESTIONS = [
 const AIAssistant = ({ meetingId }: { meetingId: string }) => {
   const [input, setInput] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+  // assistantHistory is now scoped to this meetingId — no cross-meeting bleed
   const { assistantHistory, isAssistantLoading, sendAssistantMessage } = useAI(meetingId);
 
   useEffect(() => {

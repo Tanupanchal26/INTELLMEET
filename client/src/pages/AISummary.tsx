@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import {
   Brain, Sparkles, FileText, Download, Search,
@@ -33,22 +33,24 @@ const PROMPT_SUGGESTIONS = [
 
 const AISummary = () => {
   const store = useAIStore();
+  const queryClient = useQueryClient();
   const authUser = useAppSelector((s) => s.auth.user);
   const token = useAppSelector((s) => s.auth.accessToken) || localStorage.getItem('im_access_token') || '';
 
   // All page-level state lives in Zustand so it survives navigation
   const selectedId          = store.aiPageSelectedId;
   const activeTab           = store.aiPageActiveTab;
-  const chatHistory         = store.aiPageChatHistory;
+  // Chat history and follow-ups are keyed by meetingId — never shared across meetings
+  const chatHistory         = selectedId ? store.getAIPageChatHistory(selectedId) : [];
   const searchQuery         = store.aiPageSearchQuery;
   const searchResults       = store.aiPageSearchResults;
-  const followUpSuggestions = store.aiPageFollowUpSuggestions;
+  const followUpSuggestions = selectedId ? store.getAIPageFollowUpSuggestions(selectedId) : [];
 
   const setSelectedId          = store.setAIPageSelectedId;
   const setActiveTab           = store.setAIPageActiveTab;
   const setSearchQuery         = store.setAIPageSearchQuery;
   const setSearchResults       = store.setAIPageSearchResults;
-  const setFollowUpSuggestions = store.setAIPageFollowUpSuggestions;
+  const setFollowUpSuggestions = (s: any[]) => { if (selectedId) store.setAIPageFollowUpSuggestions(selectedId, s); };
 
   const [chatMsg, setChatMsg]         = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -72,7 +74,7 @@ const AISummary = () => {
     enabled: !!selectedId,
     staleTime: 30 * 60_000,   // AI results are expensive — cache for 30 min
     gcTime: 60 * 60_000,      // keep in memory for 1 hour
-    placeholderData: (prev: any) => prev,
+    // No placeholderData — never show a previous meeting's result while loading
     retry: 2,
   });
 
@@ -80,13 +82,13 @@ const AISummary = () => {
   useEffect(() => {
     if (!selectedId || !aiResult) return;
     if (aiResult.processingStatus === 'completed' && aiResult.followUpSuggestions?.length) {
-      setFollowUpSuggestions(aiResult.followUpSuggestions);
+      store.setAIPageFollowUpSuggestions(selectedId, aiResult.followUpSuggestions);
       return;
     }
     if (aiResult.processingStatus === 'completed') {
       setFollowUpLoading(true);
       aiService.getFollowUpSuggestions(selectedId)
-        .then((res: any) => setFollowUpSuggestions(res?.data?.suggestions ?? res?.suggestions ?? []))
+        .then((res: any) => store.setAIPageFollowUpSuggestions(selectedId, res?.data?.suggestions ?? res?.suggestions ?? []))
         .catch(() => {})
         .finally(() => setFollowUpLoading(false));
     }
@@ -104,7 +106,7 @@ const AISummary = () => {
 
   const handleGenerateSummary = async () => {
     if (!selectedId) return;
-    store.setGenerating(true);
+    store.setGenerating(selectedId, true);
     try {
       // Fetch transcript first so the backend has content to summarise
       let transcript = '';
@@ -123,10 +125,13 @@ const AISummary = () => {
       const sRes: any = await aiService.generateSummary(selectedId, transcript);
       // axios interceptor unwraps res.data → ApiResponse envelope { data: { summary } }
       const generatedSummary: string = sRes?.data?.summary ?? sRes?.summary ?? '';
-      store.setSummary(generatedSummary);
+      // Store summary scoped to this specific meeting
+      store.setSummary(selectedId, generatedSummary);
 
       const aRes: any = await aiService.getActionItems(selectedId);
-      store.setActionItems(aRes?.data?.actionItems ?? aRes?.actionItems ?? []);
+      store.setActionItems(selectedId, aRes?.data?.actionItems ?? aRes?.actionItems ?? []);
+      // Invalidate the cached ai-result so displaySummary always shows the new value
+      queryClient.invalidateQueries({ queryKey: ['ai-result', selectedId] });
       toast.success('Summary generated');
     } catch (err: any) {
       const raw = err?.response?.data?.message || err?.message || '';
@@ -135,7 +140,7 @@ const AISummary = () => {
         : raw || 'Failed to generate summary';
       toast.error(msg, { duration: 6000 });
     } finally {
-      store.setGenerating(false);
+      store.setGenerating(selectedId, false);
     }
   };
 
@@ -158,7 +163,7 @@ const AISummary = () => {
       const res: any = await aiService.generateMinutes(selectedId, transcript || undefined);
       // axios interceptor unwraps res.data → ApiResponse envelope { data: { minutes } }
       const generatedMinutes: string = res?.data?.minutes ?? res?.minutes ?? '';
-      store.setMinutes(generatedMinutes);
+      store.setMinutes(selectedId, generatedMinutes);
       setActiveTab('minutes');
       toast.success('Minutes generated');
     } catch (err: any) {
@@ -172,14 +177,14 @@ const AISummary = () => {
     setChatMsg('');
     setChatLoading(true);
     const updated = [...chatHistory, { role: 'user', content: msg }];
-    store.setAIPageChatHistory(updated);
+    store.setAIPageChatHistory(selectedId, updated);
     try {
       const res: any = await aiService.assistantChat(selectedId, msg, chatHistory);
       const reply = res?.data?.reply ?? res?.reply ?? 'No response';
-      store.setAIPageChatHistory([...updated, { role: 'assistant', content: reply }]);
+      store.setAIPageChatHistory(selectedId, [...updated, { role: 'assistant', content: reply }]);
     } catch (err: any) {
       const errMsg = err?.message || 'Assistant unavailable';
-      store.setAIPageChatHistory([...updated, { role: 'assistant', content: `Sorry, I couldn't process that. (${errMsg})` }]);
+      store.setAIPageChatHistory(selectedId, [...updated, { role: 'assistant', content: `Sorry, I couldn't process that. (${errMsg})` }]);
     } finally { setChatLoading(false); }
   };
 
@@ -200,9 +205,12 @@ const AISummary = () => {
     if (selectedId) exportService.downloadActionItemsCSV(selectedId);
   };
 
-  const displaySummary = aiResult?.summary || store.summary;
-  const displayMinutes = aiResult?.minutes || store.minutes;
-  const displayActions = aiResult?.actionItems?.length ? aiResult.actionItems : store.actionItems;
+  // All display values come from the per-meeting store slot or the React Query result
+  // for the currently selected meeting — never from a global fallback.
+  const perMeetingData = selectedId ? store.getMeetingData(selectedId) : null;
+  const displaySummary = aiResult?.summary || perMeetingData?.summary || '';
+  const displayMinutes = aiResult?.minutes || perMeetingData?.minutes || '';
+  const displayActions = aiResult?.actionItems?.length ? aiResult.actionItems : (perMeetingData?.actionItems ?? []);
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
@@ -287,7 +295,12 @@ const AISummary = () => {
             meetings.map((m: any) => (
               <button
                 key={m._id}
-                onClick={() => { setSelectedId(m._id); store.setAIPageChatHistory([]); setFollowUpSuggestions([]); }}
+                onClick={() => {
+                  setSelectedId(m._id);
+                  // Each meeting's chat history and follow-ups are already keyed by meetingId
+                  // in the store — no manual clearing needed. The display values will
+                  // automatically reflect the newly selected meeting's isolated data.
+                }}
                 className={clsx(
                   'flex items-center gap-2.5 p-2.5 rounded-xl text-left transition-all w-full border cursor-pointer',
                   selectedId === m._id
@@ -328,7 +341,7 @@ const AISummary = () => {
             <>
               {/* Action bar */}
               <div className="flex items-center gap-2 flex-wrap">
-                <Button size="sm" loading={store.isGenerating} leftIcon={<Sparkles size={12} />} onClick={handleGenerateSummary}>
+                <Button size="sm" loading={selectedId ? store.getMeetingData(selectedId).isGenerating : false} leftIcon={<Sparkles size={12} />} onClick={handleGenerateSummary}>
                   Generate Summary
                 </Button>
                 <Button variant="secondary" size="sm" leftIcon={<FileText size={12} />} onClick={handleGenerateMinutes}>

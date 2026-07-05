@@ -66,6 +66,11 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'mentions', label: 'Mentions' },
 ];
 
+const Notifications = () => {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [filter, setFilter] = useState<Filter>('all');
+
   const filterNotif = (n: Notification) => {
     if (filter === 'unread')   return !n.isRead;
     if (filter === 'meetings') return n.type.startsWith('meeting');
@@ -73,17 +78,6 @@ const FILTERS: { id: Filter; label: string }[] = [
     if (filter === 'mentions') return n.type.includes('mention') || n.type.includes('reply');
     return true;
   };
-
-  const handleClick = async (notif: Notification) => {
-    if (!notif.isRead) markRead.mutate(notif._id);
-    const link = getDeepLink(notif);
-    if (link) navigate(link);
-  };
-
-const Notifications = () => {
-  const qc = useQueryClient();
-  const navigate = useNavigate();
-  const [filter, setFilter] = useState<Filter>('all');
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications'],
@@ -144,6 +138,12 @@ const Notifications = () => {
     },
     onError: () => toast.error('Failed to decline invitation'),
   });
+
+  const handleClick = async (notif: Notification) => {
+    if (!notif.isRead) markRead.mutate(notif._id);
+    const link = getDeepLink(notif);
+    if (link) navigate(link);
+  };
 
   return (
     <div className="flex flex-col gap-5 max-w-2xl w-full font-sans text-[var(--color-text)]">

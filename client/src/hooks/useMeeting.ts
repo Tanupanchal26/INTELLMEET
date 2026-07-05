@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useMeetingStore } from '../store/meeting/meeting.store';
 import { useAIStore } from '../store/ai/ai.store';
+import { useQueryClient as _useQueryClient } from '@tanstack/react-query';
 import { useSocket } from './useSocket';
 import { meetingService } from '../api/meeting.api';
 import toast from 'react-hot-toast';
@@ -19,7 +20,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { addParticipant, removeParticipant, setInCall, resetMeeting, updateParticipant, setParticipants, setHandRaised, addReaction, removeReaction } = useMeetingStore();
-  const { appendTranscript } = useAIStore();
+  const { appendTranscript, clearMeetingAI } = useAIStore();
 
   useEffect(() => {
     if (!socket || !roomId) return;
@@ -188,9 +189,12 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
     };
   }, [socket, roomId, addParticipant, removeParticipant, setInCall, setParticipants, appendTranscript, updateParticipant, resetMeeting, navigate, qc, setHandRaised, addReaction, removeReaction]);
 
-  const leaveMeeting = async (_meetingId?: string) => {
+  const leaveMeeting = async (meetingId?: string) => {
     onBeforeLeave?.();
     socket?.emit('meeting:leave', roomId);
+    // Clear this meeting's AI state so it never bleeds into the next meeting
+    const idToClear = meetingId ?? useMeetingStore.getState().currentMeeting?.id;
+    if (idToClear) clearMeetingAI(idToClear);
     resetMeeting();
     qc.invalidateQueries({ queryKey: ['dashboard'] });
     qc.invalidateQueries({ queryKey: ['meetings'] });
@@ -203,6 +207,8 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
     const { currentMeeting } = useMeetingStore.getState();
     socket?.emit('meeting:end', { roomId: currentMeeting?.roomId ?? roomId });
     await meetingService.end(meetingId).catch(() => {});
+    // Clear this meeting's AI state so it never bleeds into the next meeting
+    clearMeetingAI(meetingId);
     resetMeeting();
     toast('Meeting ended', { icon: '🔴' });
     navigate(ROUTES.LOBBY);

@@ -16,6 +16,7 @@ import ActionItems from '../components/ai/ActionItems';
 import AIAssistant from '../components/ai/AIAssistant';
 import { useRecording } from '../hooks/useRecording';
 import { useMeetingStore } from '../store/meeting/meeting.store';
+import { useAIStore } from '../store/ai/ai.store';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { useTranscription } from '../hooks/useTranscription';
 import { useMeeting } from '../hooks/useMeeting';
@@ -68,7 +69,7 @@ const AIPanel = ({ meetingId }: { meetingId: string }) => {
         ))}
       </div>
       <div className="flex-1 overflow-y-auto" role="tabpanel">
-        {tab === 'transcript' && <TranscriptPanel />}
+        {tab === 'transcript' && <TranscriptPanel meetingId={meetingId} />}
         {tab === 'summary'    && <SummaryCard meetingId={meetingId} />}
         {tab === 'actions'    && <ActionItems meetingId={meetingId} />}
         {tab === 'assistant'  && <AIAssistant meetingId={meetingId} />}
@@ -169,6 +170,7 @@ const MeetingRoom = () => {
   useFocusTrap(panelRef, panelOpen);
 
   const { setCurrentMeeting, isRecording, currentMeeting } = useMeetingStore();
+  const { clearMeetingAI } = useAIStore();
   const { localStreamRef, localStream, remoteStreams, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks } = useWebRTC({ roomId: socketRoomId, userId: user?.id ?? '' });
   
   useTranscription(id ?? '');
@@ -239,7 +241,11 @@ const MeetingRoom = () => {
       }
     };
     initMeeting();
-    return () => setCurrentMeeting(null);
+    return () => {
+      setCurrentMeeting(null);
+      // Clear this meeting's AI state on unmount so it never bleeds into the next meeting
+      if (id) clearMeetingAI(id);
+    };
   }, [id, user?.id, setCurrentMeeting, navigate]);
 
   const meetingTitle = currentMeeting?.title ?? 'Meeting';
