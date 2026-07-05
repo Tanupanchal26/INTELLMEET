@@ -82,17 +82,19 @@ const AISummary = () => {
   // Auto-load follow-up suggestions when a completed meeting is selected
   useEffect(() => {
     if (!selectedId || !aiResult) return;
-    if (aiResult.processingStatus === 'completed' && aiResult.followUpSuggestions?.length) {
+    if (aiResult.processingStatus !== 'completed') return;
+    // Already have suggestions — skip to avoid infinite update loop
+    if (followUpSuggestions.length > 0) return;
+    if (aiResult.followUpSuggestions?.length) {
       store.setAIPageFollowUpSuggestions(selectedId, aiResult.followUpSuggestions);
       return;
     }
-    if (aiResult.processingStatus === 'completed') {
-      setFollowUpLoading(true);
-      aiService.getFollowUpSuggestions(selectedId)
-        .then((res: any) => store.setAIPageFollowUpSuggestions(selectedId, res?.data?.suggestions ?? res?.suggestions ?? []))
-        .catch(() => {})
-        .finally(() => setFollowUpLoading(false));
-    }
+    setFollowUpLoading(true);
+    aiService.getFollowUpSuggestions(selectedId)
+      .then((res: any) => store.setAIPageFollowUpSuggestions(selectedId, res?.data?.suggestions ?? res?.suggestions ?? []))
+      .catch(() => {})
+      .finally(() => setFollowUpLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, aiResult?.processingStatus]);
 
   const handleSearch = async () => {

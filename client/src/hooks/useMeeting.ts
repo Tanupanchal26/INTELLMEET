@@ -1,14 +1,13 @@
 import { useEffect } from 'react';
 import { useMeetingStore } from '../store/meeting/meeting.store';
 import { useAIStore } from '../store/ai/ai.store';
-import { useQueryClient as _useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSocket } from './useSocket';
 import { meetingService } from '../api/meeting.api';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../constants';
 import { getSocket } from '../utils/socket';
-import { useQueryClient } from '@tanstack/react-query';
 
 /** Strip control characters to prevent log/XSS injection from socket payloads */
 const sanitize = (v: unknown): string =>
@@ -19,11 +18,11 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
   const { socket } = useSocket();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { addParticipant, removeParticipant, setInCall, resetMeeting, updateParticipant, setParticipants, setHandRaised, addReaction, removeReaction } = useMeetingStore();
-  const { appendTranscript, clearMeetingAI } = useAIStore();
 
   useEffect(() => {
     if (!socket || !roomId) return;
+    const { addParticipant, removeParticipant, setInCall, resetMeeting, updateParticipant, setParticipants, setHandRaised, addReaction, removeReaction } = useMeetingStore.getState();
+    const { appendTranscript } = useAIStore.getState();
 
     const onUserJoined  = (data: any) => {
       // Never add ourselves — the local tile is rendered separately
@@ -187,15 +186,14 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       socket.off('connect',              onReconnect);
       socket.off('dashboard:refresh',    onDashboardRefresh);
     };
-  }, [socket, roomId, addParticipant, removeParticipant, setInCall, setParticipants, appendTranscript, updateParticipant, resetMeeting, navigate, qc, setHandRaised, addReaction, removeReaction]);
+  }, [socket, roomId, navigate, qc]);
 
   const leaveMeeting = async (meetingId?: string) => {
     onBeforeLeave?.();
     socket?.emit('meeting:leave', roomId);
-    // Clear this meeting's AI state so it never bleeds into the next meeting
     const idToClear = meetingId ?? useMeetingStore.getState().currentMeeting?.id;
-    if (idToClear) clearMeetingAI(idToClear);
-    resetMeeting();
+    if (idToClear) useAIStore.getState().clearMeetingAI(idToClear);
+    useMeetingStore.getState().resetMeeting();
     qc.invalidateQueries({ queryKey: ['dashboard'] });
     qc.invalidateQueries({ queryKey: ['meetings'] });
     toast('You left the meeting', { icon: '👋' });
@@ -207,9 +205,8 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
     const { currentMeeting } = useMeetingStore.getState();
     socket?.emit('meeting:end', { roomId: currentMeeting?.roomId ?? roomId });
     await meetingService.end(meetingId).catch(() => {});
-    // Clear this meeting's AI state so it never bleeds into the next meeting
-    clearMeetingAI(meetingId);
-    resetMeeting();
+    useAIStore.getState().clearMeetingAI(meetingId);
+    useMeetingStore.getState().resetMeeting();
     toast('Meeting ended', { icon: '🔴' });
     navigate(ROUTES.LOBBY);
   };
