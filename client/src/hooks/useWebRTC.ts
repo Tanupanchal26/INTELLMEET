@@ -12,6 +12,19 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   const [localStream, setLocalStream]    = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
 
+  // Stable helper: only call setLocalStream when the track composition actually
+  // changes. Comparing by track-id set prevents new MediaStream object identity
+  // from triggering downstream useEffect([localStream]) re-runs unnecessarily.
+  const updateLocalStream = useCallback((next: MediaStream | null) => {
+    setLocalStream(prev => {
+      if (!next && !prev) return prev;
+      if (!next || !prev) return next;
+      const prevIds = prev.getTracks().map(t => t.id).sort().join(',');
+      const nextIds = next.getTracks().map(t => t.id).sort().join(',');
+      return prevIds === nextIds ? prev : next;
+    });
+  }, []);
+
   // keyed by remoteSocketId
   const peersRef          = useRef<Map<string, RTCPeerConnection>>(new Map());
   const iceCandidateQueue = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
@@ -252,7 +265,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         localStreamRef.current = stream;
         mediaReadyRef.current  = true;
         setIsMediaReady(true);
-        setLocalStream(new MediaStream(stream.getTracks()));
+        updateLocalStream(stream);
         startVAD(stream);
         return;
       } catch { /* camera unavailable */ }
@@ -266,7 +279,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         localStreamRef.current = stream;
         mediaReadyRef.current  = true;
         setIsMediaReady(true);
-        setLocalStream(new MediaStream(stream.getTracks()));
+        updateLocalStream(stream);
         startVAD(stream);
         toast('No camera found — joined with audio only', { icon: '🎤' });
         return;
@@ -458,7 +471,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         });
         replaceVideoTrackInPeers(null);
         const audio = localStreamRef.current?.getAudioTracks() ?? [];
-        setLocalStream(audio.length ? new MediaStream(audio) : null);
+        updateLocalStream(audio.length ? new MediaStream(audio) : null);
       } else {
         try {
           const vStream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -467,7 +480,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
           if (!localStreamRef.current) localStreamRef.current = new MediaStream();
           localStreamRef.current.addTrack(vTrack);
           replaceVideoTrackInPeers(vTrack);
-          setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+          updateLocalStream(new MediaStream(localStreamRef.current.getTracks()));
         } catch {
           toast.error('Could not turn on camera. Check browser permissions.');
         }
@@ -519,11 +532,11 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
           });
           localStreamRef.current.addTrack(vTrack);
           replaceVideoTrackInPeers(vTrack);
-          setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+          updateLocalStream(new MediaStream(localStreamRef.current.getTracks()));
         })
         .catch(() => {
           replaceVideoTrackInPeers(null);
-          setLocalStream(new MediaStream(localStreamRef.current?.getAudioTracks() ?? []));
+          updateLocalStream(new MediaStream(localStreamRef.current?.getAudioTracks() ?? []));
         });
     } else {
       localStreamRef.current?.getVideoTracks().forEach(t => {
@@ -531,7 +544,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         localStreamRef.current?.removeTrack(t);
       });
       replaceVideoTrackInPeers(null);
-      setLocalStream(new MediaStream(localStreamRef.current?.getTracks() ?? []));
+      updateLocalStream(new MediaStream(localStreamRef.current?.getTracks() ?? []));
     }
   }, [setScreenSharing, replaceVideoTrackInPeers]);
 
@@ -559,7 +572,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         localStreamRef.current = new MediaStream([screenTrack]);
       }
 
-      setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+      updateLocalStream(new MediaStream(localStreamRef.current.getTracks()));
       setScreenSharing(true);
       const s = getSocket();
       if (s?.connected && roomIdRef.current) {

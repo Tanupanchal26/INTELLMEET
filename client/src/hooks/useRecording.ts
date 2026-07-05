@@ -16,7 +16,7 @@ export const useRecording = (
   localStream: MediaStream | null,
   screenStreamRef?: React.RefObject<MediaStream | null>,
 ) => {
-  const { isRecording, toggleRecording } = useMeetingStore();
+  const isRecording = useMeetingStore((s) => s.isRecording);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef        = useRef<BlobPart[]>([]);
   const isRecordingRef   = useRef(false);
@@ -86,7 +86,9 @@ export const useRecording = (
 
     recorder.onstop = async () => {
       isRecordingRef.current = false;
-      if (useMeetingStore.getState().isRecording) toggleRecording();
+      // Use setState directly to SET a known value — never toggle, which can
+      // cause an extra render cycle if the current value is already correct.
+      useMeetingStore.setState({ isRecording: false });
       getSocket()?.emit('recording:stopped', { roomId: meetingId });
       await doUpload();
     };
@@ -95,9 +97,10 @@ export const useRecording = (
     chunksRef.current = [];
     recorder.start(1000);
     isRecordingRef.current = true;
-    if (!useMeetingStore.getState().isRecording) toggleRecording();
+    // SET to true directly — never toggle, avoids double-flip if already true.
+    useMeetingStore.setState({ isRecording: true });
     getSocket()?.emit('recording:started', { roomId: meetingId });
-  }, [getRecordingStream, createRecorder, meetingId, toggleRecording, doUpload]);
+  }, [getRecordingStream, createRecorder, meetingId, doUpload]);
 
   // ── Stop recording ────────────────────────────────────────────────────────
   const stopRecording = useCallback(() => {
@@ -105,7 +108,7 @@ export const useRecording = (
     if (!recorder || recorder.state === 'inactive') {
       if (isRecordingRef.current) {
         isRecordingRef.current = false;
-        if (useMeetingStore.getState().isRecording) toggleRecording();
+        useMeetingStore.setState({ isRecording: false });
       }
       doUpload();
       return;
@@ -114,7 +117,7 @@ export const useRecording = (
     recorder.requestData();
     recorder.stop();
     mediaRecorderRef.current = null;
-  }, [toggleRecording, doUpload]);
+  }, [doUpload]);
 
   // ── Switch source seamlessly (screen ↔ camera) ────────────────────────────
   // Keeps accumulated chunks — no gap in the recording.
@@ -132,7 +135,7 @@ export const useRecording = (
 
     recorder.onstop = async () => {
       isRecordingRef.current = false;
-      if (useMeetingStore.getState().isRecording) toggleRecording();
+      useMeetingStore.setState({ isRecording: false });
       getSocket()?.emit('recording:stopped', { roomId: meetingId });
       await doUpload();
     };
@@ -140,7 +143,7 @@ export const useRecording = (
     mediaRecorderRef.current = recorder;
     recorder.start(1000);
     // isRecordingRef stays true — no state flicker
-  }, [createRecorder, meetingId, toggleRecording, doUpload]);
+  }, [createRecorder, meetingId, doUpload]);
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {

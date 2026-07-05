@@ -170,7 +170,6 @@ const MeetingRoom = () => {
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, panelOpen);
 
-  const setCurrentMeeting = useMeetingStore((s) => s.setCurrentMeeting);
   const isRecording       = useMeetingStore((s) => s.isRecording);
   const currentMeeting    = useMeetingStore((s) => s.currentMeeting);
   const { localStreamRef, localStream, remoteStreams, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks } = useWebRTC({ roomId: socketRoomId, userId: user?.id ?? '' });
@@ -180,14 +179,19 @@ const MeetingRoom = () => {
   // re-registers when the real roomId arrives from the server
   const { leaveMeeting, endMeeting } = useMeeting(socketRoomId || undefined, () => stopRecording());
 
-  // Auto-start recording when localStream is ready
+  // Auto-start recording when localStream is ready — fires at most once.
+  // recordingStartedRef guards against re-entry if localStream identity changes.
   const { startRecording, stopRecording, switchSource } = useRecording(id ?? '', localStream, screenStreamRef);
   const recordingStartedRef = useRef(false);
 
   useEffect(() => {
     if (!localStream || recordingStartedRef.current) return;
-    recordingStartedRef.current = true;
-    startRecording();
+    // Verify at least one live track exists before starting
+    if (localStream.getTracks().some(t => t.readyState === 'live')) {
+      recordingStartedRef.current = true;
+      startRecording();
+    }
+  // startRecording is stable (useCallback with stable deps) — safe to omit
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localStream]);
 
@@ -225,7 +229,7 @@ const MeetingRoom = () => {
         }
         const roomId = meeting?.roomId || id;
         setSocketRoomId(roomId);
-        setCurrentMeeting({
+        useMeetingStore.getState().setCurrentMeeting({
           id,
           title: meeting?.title || 'Live Meeting',
           roomId,
@@ -239,16 +243,17 @@ const MeetingRoom = () => {
           navigate(ROUTES.LOBBY);
           return;
         }
-        setCurrentMeeting({ id, title: 'Live Meeting', roomId: id, host: user?.id ?? '' });
+        useMeetingStore.getState().setCurrentMeeting({ id, title: 'Live Meeting', roomId: id, host: user?.id ?? '' });
       }
     };
     initMeeting();
     return () => {
-      setCurrentMeeting(null);
+      useMeetingStore.getState().setCurrentMeeting(null);
       // Clear this meeting's AI state on unmount so it never bleeds into the next meeting
       if (id) useAIStore.getState().clearMeetingAI(id);
     };
-  }, [id, user?.id, setCurrentMeeting, navigate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, user?.id, navigate]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), 30_000);

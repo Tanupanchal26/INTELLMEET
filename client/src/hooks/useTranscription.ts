@@ -5,17 +5,16 @@ import { useAppSelector } from './useAppDispatch';
 import { getSocket } from '../utils/socket';
 import axios from 'axios';
 
-const AUDIO_CHUNK_MS   = 5000;  // send a Whisper chunk every 5 s
-const MIN_AUDIO_BYTES  = 1000;  // skip silent/empty chunks
+const AUDIO_CHUNK_MS  = 5000;  // send a Whisper chunk every 5 s
+const MIN_AUDIO_BYTES = 1000;  // skip silent/empty chunks
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export const useTranscription = (meetingId: string) => {
   const isMuted = useMeetingStore((s) => s.isMuted);
-  // Read actions directly from getState() so they are never in useCallback deps
+  const user    = useAppSelector((s) => s.auth.user);
+
   const setTranscribing  = useCallback((v: boolean) => useAIStore.getState().setTranscribing(meetingId, v),  [meetingId]);
   const appendTranscript = useCallback((chunk: string) => useAIStore.getState().appendTranscript(meetingId, chunk), [meetingId]);
-  const user   = useAppSelector((s) => s.auth.user);
-  const socket = getSocket();
 
   // ── Whisper audio streaming ──────────────────────────────────────────────
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -24,7 +23,7 @@ export const useTranscription = (meetingId: string) => {
 
   const flushAudio = useCallback(async (mimeType: string) => {
     if (!chunksRef.current.length || !meetingId) return;
-    const blob  = new Blob(chunksRef.current, { type: mimeType });
+    const blob = new Blob(chunksRef.current, { type: mimeType });
     chunksRef.current = [];
     if (blob.size < MIN_AUDIO_BYTES) return;
 
@@ -45,7 +44,6 @@ export const useTranscription = (meetingId: string) => {
 
   useEffect(() => {
     if (isMuted || !meetingId) {
-      // Stop recorder when muted
       if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop();
       }
@@ -55,10 +53,11 @@ export const useTranscription = (meetingId: string) => {
 
     let recorder: MediaRecorder;
     let mimeType = 'audio/webm';
+    let capturedStream: MediaStream | null = null;
 
     navigator.mediaDevices.getUserMedia({ audio: true, video: false })
       .then((stream) => {
-        // Pick best supported MIME type
+        capturedStream = stream;
         const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
         mimeType = preferred.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'audio/webm';
 
@@ -69,9 +68,8 @@ export const useTranscription = (meetingId: string) => {
           if (e.data.size > 0) chunksRef.current.push(e.data);
         };
 
-        recorder.start(1000); // collect data every 1 s
+        recorder.start(1000);
 
-        // Flush to Whisper every AUDIO_CHUNK_MS
         timerRef.current = setInterval(() => {
           if (recorder.state === 'recording') {
             recorder.requestData();
@@ -86,6 +84,8 @@ export const useTranscription = (meetingId: string) => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (recorder?.state === 'recording') recorder.stop();
+      // Stop all tracks to release the microphone hardware
+      capturedStream?.getTracks().forEach(t => t.stop());
     };
   }, [isMuted, meetingId, flushAudio]);
 
@@ -116,14 +116,20 @@ export const useTranscription = (meetingId: string) => {
       // eslint-disable-next-line no-control-regex
       const chunk = raw.replace(/[\r\n\t\x00-\x1f\x7f]/g, ' ').trim().slice(0, 2000);
       if (!chunk) return;
-      if (socket?.connected && meetingId) {
-        socket.emit('meeting:transcript-chunk', { meetingId, chunk });
+      const s = getSocket();
+      if (s?.connected && meetingId) {
+        s.emit('meeting:transcript-chunk', { meetingId, chunk });
       }
     };
 
     recognition.onerror = (event: any) => {
       const errName = String(event?.error ?? 'unknown').replace(/[\r\n]/g, '_');
-      console.error('[SpeechRecognition] error:', errName);
+      if (errName === 'not-allowed' || errName === 'service-not-allowed') {
+        setTranscribing(false);
+        recognition.onend = null;
+        return;
+      }
+      console.warn('[SpeechRecognition] error:', errName);
     };
 
     recognition.onend = () => {
@@ -137,8 +143,8 @@ export const useTranscription = (meetingId: string) => {
     try {
       recognition.start();
       recognitionRef.current = recognition;
-    } catch (e) {
-      console.error(e);
+    } catch {
+      setTranscribing(false);
     }
 
     return () => {
@@ -146,11 +152,15 @@ export const useTranscription = (meetingId: string) => {
       try { recognition.stop(); } catch (_) {}
       setTranscribing(false);
     };
-  }, [isMuted, meetingId, socket, setTranscribing]);
+  }, [isMuted, meetingId, setTranscribing]);
 
   // ── Receive transcript chunks from all participants ───────────────────────
+  // Single effect, single listener registration. Uses getSocket() inside the
+  // handler (not as a dep) to avoid re-running when the socket reconnects.
   useEffect(() => {
-    if (!socket || !meetingId) return;
+    if (!meetingId) return;
+    const socket = getSocket();
+    if (!socket) return;
 
     const handleChunk = ({ chunk, speaker }: { chunk: string; speaker: string }) => {
       const prefix = speaker === user?.name ? 'You' : speaker;
@@ -159,5 +169,6 @@ export const useTranscription = (meetingId: string) => {
 
     socket.on('meeting:transcript-chunk', handleChunk);
     return () => { socket.off('meeting:transcript-chunk', handleChunk); };
-  }, [socket, meetingId, user?.name, appendTranscript]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetingId, user?.name, appendTranscript]);
 };
