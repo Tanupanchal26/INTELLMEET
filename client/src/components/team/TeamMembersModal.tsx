@@ -36,15 +36,15 @@ export const TeamMembersModal = ({ team: initialTeam, open, onClose }: TeamMembe
 
   // Listen for real-time member updates
   useEffect(() => {
-    if (!socket) return;
+    if (!socket.current) return;
     const onMembersUpdated = (updatedTeam: Team) => {
       if (updatedTeam._id === initialTeam._id) {
         qc.setQueryData(['team', initialTeam._id], updatedTeam);
       }
     };
-    socket.on('team:members-updated', onMembersUpdated);
-    return () => { socket.off('team:members-updated', onMembersUpdated); };
-  }, [socket, initialTeam._id, qc]);
+    socket.current.on('team:members-updated', onMembersUpdated);
+    return () => { socket.current!.off('team:members-updated', onMembersUpdated); };
+  }, [initialTeam._id, qc]); // socket is a stable ref — safe to omit
 
   const currentMemberInfo = team.members.find(
     m => String(m.user._id) === String(currentUser?.id)

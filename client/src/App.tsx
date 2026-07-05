@@ -50,14 +50,14 @@ const AuthSync = () => {
 
   // Global real-time notification listener
   useEffect(() => {
-    if (!isAuthenticated || !socket) return;
+    if (!isAuthenticated || !socket.current) return;
     const onNew = (notif: Notification) => {
       dispatch(pushNotification(notif));
       toast(notif.title, { icon: '🔔', duration: 4000 });
     };
-    socket.on('notification:new', onNew);
-    return () => { socket.off('notification:new', onNew); };
-  }, [isAuthenticated, socket, dispatch]);
+    socket.current.on('notification:new', onNew);
+    return () => { socket.current!.off('notification:new', onNew); };
+  }, [isAuthenticated, dispatch]); // socket is a stable ref — safe to omit
 
   // ── Session restoration on every app boot ────────────────────────────────
   // isInitializing is ALWAYS true on boot (auth.slice.ts). This effect runs

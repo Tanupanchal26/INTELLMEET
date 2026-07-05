@@ -15,9 +15,9 @@ export const usePresence = () => {
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket.current) return;
 
-    socket.emit('presence:list');
+    socket.current.emit('presence:list');
 
     const onList    = (ids: string[]) => {
       setOnlineUsers(prev => ids.map(id => prev.find(u => u.userId === id) || { userId: id, name: '' }));
@@ -30,22 +30,22 @@ export const usePresence = () => {
     const onStatus  = ({ userId, status }: { userId: string; status: OnlineUser['status'] }) =>
       setOnlineUsers(prev => prev.map(u => u.userId === userId ? { ...u, status } : u));
 
-    socket.on('presence:list',    onList);
-    socket.on('presence:online',  onOnline);
-    socket.on('presence:offline', onOffline);
-    socket.on('presence:status',  onStatus);
+    socket.current.on('presence:list',    onList);
+    socket.current.on('presence:online',  onOnline);
+    socket.current.on('presence:offline', onOffline);
+    socket.current.on('presence:status',  onStatus);
 
     return () => {
-      socket.off('presence:list',    onList);
-      socket.off('presence:online',  onOnline);
-      socket.off('presence:offline', onOffline);
-      socket.off('presence:status',  onStatus);
+      socket.current!.off('presence:list',    onList);
+      socket.current!.off('presence:online',  onOnline);
+      socket.current!.off('presence:offline', onOffline);
+      socket.current!.off('presence:status',  onStatus);
     };
-  }, [socket]);
+  }, []); // socket is a stable ref — safe to omit
 
   const setStatus = useCallback((status: 'online' | 'away' | 'busy') => {
-    socket?.emit('presence:status', { status });
-  }, [socket]);
+    socket.current?.emit('presence:status', { status });
+  }, []);
 
   const isOnline = useCallback(
     (userId: string) => onlineUsers.some(u => u.userId === userId),

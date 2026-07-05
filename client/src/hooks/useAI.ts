@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 const EMPTY_ARRAY: never[] = [];
 
 export const useAI = (meetingId: string) => {
-  const { socket } = useSocket();
+  const { socket } = useSocket(); // socket is a RefObject — stable, never changes identity
 
   // Fine-grained selectors — only re-render when this meeting's specific data changes
   const transcript         = useAIStore((s) => s.meetingData[meetingId]?.transcript        ?? '');
@@ -24,7 +24,7 @@ export const useAI = (meetingId: string) => {
 
   // ── Socket listeners — scoped to this meetingId ───────────────────────────
   useEffect(() => {
-    if (!socket || !meetingId) return;
+    if (!socket.current || !meetingId) return;
 
     const onTranscriptChunk = ({ chunk }: { chunk: string }) =>
       useAIStore.getState().appendTranscript(meetingId, chunk);
@@ -56,22 +56,22 @@ export const useAI = (meetingId: string) => {
       useAIStore.getState().setAssistantLoading(meetingId, false);
     };
 
-    socket.on('meeting:transcript-chunk', onTranscriptChunk);
-    socket.on('ai:summary-ready',         onSummaryReady);
-    socket.on('ai:minutes-ready',         onMinutesReady);
-    socket.on('ai:processing',            onProcessing);
-    socket.on('ai:error',                 onAIError);
-    socket.on('ai:assistant-reply',       onAssistantReply);
+    socket.current.on('meeting:transcript-chunk', onTranscriptChunk);
+    socket.current.on('ai:summary-ready',         onSummaryReady);
+    socket.current.on('ai:minutes-ready',         onMinutesReady);
+    socket.current.on('ai:processing',            onProcessing);
+    socket.current.on('ai:error',                 onAIError);
+    socket.current.on('ai:assistant-reply',       onAssistantReply);
 
     return () => {
-      socket.off('meeting:transcript-chunk', onTranscriptChunk);
-      socket.off('ai:summary-ready',         onSummaryReady);
-      socket.off('ai:minutes-ready',         onMinutesReady);
-      socket.off('ai:processing',            onProcessing);
-      socket.off('ai:error',                 onAIError);
-      socket.off('ai:assistant-reply',       onAssistantReply);
+      socket.current!.off('meeting:transcript-chunk', onTranscriptChunk);
+      socket.current!.off('ai:summary-ready',         onSummaryReady);
+      socket.current!.off('ai:minutes-ready',         onMinutesReady);
+      socket.current!.off('ai:processing',            onProcessing);
+      socket.current!.off('ai:error',                 onAIError);
+      socket.current!.off('ai:assistant-reply',       onAssistantReply);
     };
-  }, [socket, meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [meetingId]); // socket is a stable ref — safe to omit // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── REST actions ──────────────────────────────────────────────────────────
   const generateSummary = useCallback(async () => {
@@ -137,8 +137,8 @@ export const useAI = (meetingId: string) => {
 
     const history = (useAIStore.getState().meetingData[meetingId]?.assistantHistory ?? []).map((m) => ({ role: m.role, content: m.content }));
 
-    if (socket?.connected) {
-      socket.emit('ai:assistant-message', { meetingId, message, history });
+    if (socket.current?.connected) {
+      socket.current.emit('ai:assistant-message', { meetingId, message, history });
     } else {
       try {
         const { data } = await aiService.assistantChat(meetingId, message, history);
@@ -149,7 +149,7 @@ export const useAI = (meetingId: string) => {
         useAIStore.getState().setAssistantLoading(meetingId, false);
       }
     }
-  }, [socket, meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [meetingId]); // socket is a stable ref — safe to omit // eslint-disable-line react-hooks/exhaustive-deps
 
   const searchMeetings = useCallback(async (query: string) => {
     if (!query.trim()) return;
@@ -165,9 +165,9 @@ export const useAI = (meetingId: string) => {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sendTranscriptChunk = useCallback((chunk: string) => {
-    if (!socket || !chunk.trim()) return;
-    socket.emit('meeting:transcript-chunk', { meetingId, chunk });
-  }, [socket, meetingId]);
+    if (!socket.current || !chunk.trim()) return;
+    socket.current.emit('meeting:transcript-chunk', { meetingId, chunk });
+  }, [meetingId]); // socket is a stable ref — safe to omit
 
   return {
     transcript, summary, minutes, actionItems, assistantHistory,

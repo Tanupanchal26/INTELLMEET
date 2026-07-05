@@ -27,5 +27,5 @@ export const useSocket = () => {
     // Do NOT disconnect on unmount — socket is a singleton shared across the app.
   }, [token]);
 
-  return { socket: socketRef.current, connState };
+  return { socket: socketRef, connState };
 };

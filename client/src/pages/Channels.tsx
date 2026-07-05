@@ -58,12 +58,11 @@ const ChannelView = ({ channel }: { channel: Channel }) => {
 
   /* ── Socket room join/leave + event wiring ── */
   useEffect(() => {
-    if (!socket || !channel._id) return;
+    if (!socket.current || !channel._id) return;
 
-    socket.emit('channel:join', channel._id);
+    socket.current.emit('channel:join', channel._id);
     store.clearUnread(channel._id);
 
-    // Mark last message as read
     const last = messages[messages.length - 1];
     if (last && user?.id) {
       safeEmit('channel:read', { channelId: channel._id, messageId: last._id });
@@ -87,25 +86,25 @@ const ChannelView = ({ channel }: { channel: Channel }) => {
     const onRead     = ({ userId, messageId }: { userId: string; messageId: string }) =>
       store.markChannelRead(channel._id, userId, messageId);
 
-    socket.on('channel:message',   onMessage);
-    socket.on('channel:typing',    onTyping);
-    socket.on('chat:reaction',     onReaction);
-    socket.on('chat:deleted',      onDeleted);
-    socket.on('chat:edited',       onEdited);
-    socket.on('channel:delivery',  onDelivery);
-    socket.on('channel:read',      onRead);
+    socket.current.on('channel:message',   onMessage);
+    socket.current.on('channel:typing',    onTyping);
+    socket.current.on('chat:reaction',     onReaction);
+    socket.current.on('chat:deleted',      onDeleted);
+    socket.current.on('chat:edited',       onEdited);
+    socket.current.on('channel:delivery',  onDelivery);
+    socket.current.on('channel:read',      onRead);
 
     return () => {
-      socket.off('channel:message',  onMessage);
-      socket.off('channel:typing',   onTyping);
-      socket.off('chat:reaction',    onReaction);
-      socket.off('chat:deleted',     onDeleted);
-      socket.off('chat:edited',      onEdited);
-      socket.off('channel:delivery', onDelivery);
-      socket.off('channel:read',     onRead);
-      socket.emit('channel:leave',   channel._id);
+      socket.current!.off('channel:message',  onMessage);
+      socket.current!.off('channel:typing',   onTyping);
+      socket.current!.off('chat:reaction',    onReaction);
+      socket.current!.off('chat:deleted',     onDeleted);
+      socket.current!.off('chat:edited',      onEdited);
+      socket.current!.off('channel:delivery', onDelivery);
+      socket.current!.off('channel:read',     onRead);
+      socket.current!.emit('channel:leave',   channel._id);
     };
-  }, [socket, channel._id]);
+  }, [channel._id]); // socket is a stable ref — safe to omit
 
   /* ── Auto-scroll ── */
   useEffect(() => {

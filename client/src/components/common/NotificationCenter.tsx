@@ -74,11 +74,11 @@ const NotificationCenter = () => {
   }, []);
 
   useEffect(() => {
-    if (!socket?.on) return;
+    if (!socket.current?.on) return;
     const onNew = (notif: Notification) => setNotifications(prev => [notif, ...prev]);
-    socket.on('notification:new', onNew);
-    return () => { socket.off('notification:new', onNew); };
-  }, [socket]);
+    socket.current.on('notification:new', onNew);
+    return () => { socket.current!.off('notification:new', onNew); };
+  }, []); // socket is a stable ref — safe to omit
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
