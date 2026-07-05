@@ -172,7 +172,6 @@ const MeetingRoom = () => {
   const setCurrentMeeting = useMeetingStore((s) => s.setCurrentMeeting);
   const isRecording       = useMeetingStore((s) => s.isRecording);
   const currentMeeting    = useMeetingStore((s) => s.currentMeeting);
-  const clearMeetingAI    = useAIStore((s) => s.clearMeetingAI);
   const { localStreamRef, localStream, remoteStreams, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks } = useWebRTC({ roomId: socketRoomId, userId: user?.id ?? '' });
   
   useTranscription(id ?? '');
@@ -246,7 +245,7 @@ const MeetingRoom = () => {
     return () => {
       setCurrentMeeting(null);
       // Clear this meeting's AI state on unmount so it never bleeds into the next meeting
-      if (id) clearMeetingAI(id);
+      if (id) useAIStore.getState().clearMeetingAI(id);
     };
   }, [id, user?.id, setCurrentMeeting, navigate]);
 

@@ -5,19 +5,20 @@ import { aiService } from '../api/ai.api';
 import type { ActionItem } from '../api/ai.api';
 import toast from 'react-hot-toast';
 
+const EMPTY_ARRAY: never[] = [];
+
 export const useAI = (meetingId: string) => {
   const { socket } = useSocket();
 
   // Fine-grained selectors — only re-render when this meeting's specific data changes
-  const meetingData        = useAIStore((s) => s.meetingData[meetingId]);
-  const transcript         = meetingData?.transcript        ?? '';
-  const summary            = meetingData?.summary           ?? '';
-  const minutes            = meetingData?.minutes           ?? '';
-  const actionItems        = meetingData?.actionItems       ?? [];
-  const assistantHistory   = meetingData?.assistantHistory  ?? [];
-  const isGenerating       = meetingData?.isGenerating      ?? false;
-  const isTranscribing     = meetingData?.isTranscribing    ?? false;
-  const isAssistantLoading = meetingData?.isAssistantLoading ?? false;
+  const transcript         = useAIStore((s) => s.meetingData[meetingId]?.transcript        ?? '');
+  const summary            = useAIStore((s) => s.meetingData[meetingId]?.summary           ?? '');
+  const minutes            = useAIStore((s) => s.meetingData[meetingId]?.minutes           ?? '');
+  const actionItems        = useAIStore((s) => s.meetingData[meetingId]?.actionItems       ?? EMPTY_ARRAY);
+  const assistantHistory   = useAIStore((s) => s.meetingData[meetingId]?.assistantHistory  ?? EMPTY_ARRAY);
+  const isGenerating       = useAIStore((s) => s.meetingData[meetingId]?.isGenerating      ?? false);
+  const isTranscribing     = useAIStore((s) => s.meetingData[meetingId]?.isTranscribing    ?? false);
+  const isAssistantLoading = useAIStore((s) => s.meetingData[meetingId]?.isAssistantLoading ?? false);
   const searchResults      = useAIStore((s) => s.searchResults);
   const isSearching        = useAIStore((s) => s.isSearching);
 
@@ -134,12 +135,12 @@ export const useAI = (meetingId: string) => {
     useAIStore.getState().addAssistantMessage(meetingId, { role: 'user', content: message });
     useAIStore.getState().setAssistantLoading(meetingId, true);
 
+    const history = (useAIStore.getState().meetingData[meetingId]?.assistantHistory ?? []).map((m) => ({ role: m.role, content: m.content }));
+
     if (socket?.connected) {
-      const history = assistantHistory.map((m) => ({ role: m.role, content: m.content }));
       socket.emit('ai:assistant-message', { meetingId, message, history });
     } else {
       try {
-        const history = assistantHistory.map((m) => ({ role: m.role, content: m.content }));
         const { data } = await aiService.assistantChat(meetingId, message, history);
         useAIStore.getState().addAssistantMessage(meetingId, { role: 'assistant', content: data.reply });
       } catch {
@@ -148,7 +149,7 @@ export const useAI = (meetingId: string) => {
         useAIStore.getState().setAssistantLoading(meetingId, false);
       }
     }
-  }, [socket, meetingId, assistantHistory]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [socket, meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const searchMeetings = useCallback(async (query: string) => {
     if (!query.trim()) return;
