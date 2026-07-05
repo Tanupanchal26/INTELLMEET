@@ -12,8 +12,8 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 export const useTranscription = (meetingId: string) => {
   const { isMuted } = useMeetingStore();
   const store = useAIStore();
-  const setTranscribing = (v: boolean) => store.setTranscribing(meetingId, v);
-  const appendTranscript = (chunk: string) => store.appendTranscript(meetingId, chunk);
+  const setTranscribing = useCallback((v: boolean) => store.setTranscribing(meetingId, v), [store, meetingId]);
+  const appendTranscript = useCallback((chunk: string) => store.appendTranscript(meetingId, chunk), [store, meetingId]);
   const user   = useAppSelector((s) => s.auth.user);
   const socket = getSocket();
 

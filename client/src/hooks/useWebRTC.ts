@@ -27,7 +27,12 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   const roomIdRef = useRef(roomId);
   useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
 
-  const { isVideoOff, isMuted, setScreenSharing, setLocalSpeaking } = useMeetingStore();
+  // Read isVideoOff / isMuted via selectors so only those slices cause re-renders,
+  // not every participant/reaction update in the store.
+  const isVideoOff = useMeetingStore((s) => s.isVideoOff);
+  const isMuted    = useMeetingStore((s) => s.isMuted);
+  const setScreenSharing  = useMeetingStore((s) => s.setScreenSharing);
+  const setLocalSpeaking  = useMeetingStore((s) => s.setLocalSpeaking);
 
   // ── Voice Activity Detection ──────────────────────────────────────────────
   const vadRef = useRef<{
