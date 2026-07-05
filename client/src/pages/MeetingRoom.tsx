@@ -186,7 +186,8 @@ const MeetingRoom = () => {
 
   // Single call each — duplicate calls cause duplicate socket listeners
   useTranscription(id ?? '');
-  const { leaveMeeting, endMeeting } = useMeeting(socketRoomId || undefined, () => stopRecordingRef.current());
+  const onBeforeLeave = useCallback(() => stopRecordingRef.current(), []);
+  const { leaveMeeting, endMeeting } = useMeeting(socketRoomId || undefined, onBeforeLeave);
 
   useEffect(() => {
     if (!localStream || recordingStartedRef.current) return;
@@ -237,14 +238,14 @@ const MeetingRoom = () => {
           return;
         }
         const roomId = meeting?.roomId || id;
-        setSocketRoomId(roomId);
-        useMeetingStore.getState().setCurrentMeeting({
-          id,
-          title: meeting?.title || 'Live Meeting',
-          roomId,
-          host: meeting?.host?._id || meeting?.host || user?.id || '',
-          startedAt: meeting?.startedAt,
-        });
+        setSocketRoomId(prev => prev === roomId ? prev : roomId);
+        const store = useMeetingStore.getState();
+        const cur = store.currentMeeting;
+        const newHost = meeting?.host?._id || meeting?.host || user?.id || '';
+        const newTitle = meeting?.title || 'Live Meeting';
+        if (!cur || cur.id !== id || cur.roomId !== roomId || cur.title !== newTitle || cur.host !== newHost) {
+          store.setCurrentMeeting({ id, title: newTitle, roomId, host: newHost, startedAt: meeting?.startedAt });
+        }
       } catch (err: any) {
         const msg = err?.response?.data?.message || err?.message || '';
         if (msg.toLowerCase().includes('ended')) {

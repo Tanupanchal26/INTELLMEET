@@ -25,6 +25,11 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
   useEffect(() => { navigateRef.current = navigate; }, [navigate]);
   useEffect(() => { qcRef.current = qc; }, [qc]);
 
+  const onBeforeLeaveRef = useRef(onBeforeLeave);
+  useEffect(() => { onBeforeLeaveRef.current = onBeforeLeave; }, [onBeforeLeave]);
+
+  const onBeforeLeaveStable = useCallback(() => onBeforeLeaveRef.current?.(), []);
+
   useEffect(() => {
     // Read the socket inside the effect — getSocket() returns the singleton,
     // never a new reference. This removes socket from the dep array entirely,
