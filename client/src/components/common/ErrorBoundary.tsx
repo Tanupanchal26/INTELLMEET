@@ -16,7 +16,7 @@ export class ErrorBoundary extends Component<Props, State> {
     captureException(error, { componentStack: info.componentStack ?? '' });
   }
 
-  reset = () => this.setState({ hasError: false, message: '' });
+  reset = () => window.location.reload();
 
   render() {
     if (!this.state.hasError) return this.props.children;

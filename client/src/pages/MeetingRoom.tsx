@@ -166,6 +166,7 @@ const MeetingRoom = () => {
   const [activePanel, setActivePanel] = useState<Panel>('chat');
   const [panelOpen,   setPanelOpen]   = useState(true);
   const [socketRoomId, setSocketRoomId] = useState<string>('');
+  const [now, setNow] = useState(() => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, panelOpen);
 
@@ -249,9 +250,12 @@ const MeetingRoom = () => {
     };
   }, [id, user?.id, setCurrentMeeting, navigate]);
 
-  const meetingTitle = currentMeeting?.title ?? 'Meeting';
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
-  const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const meetingTitle = currentMeeting?.title ?? 'Meeting';
 
   return (
     <div className="fixed inset-0 flex flex-col bg-[var(--color-bg)] text-[var(--color-text)] overflow-hidden" style={{ zIndex: 'var(--z-max)' }}>

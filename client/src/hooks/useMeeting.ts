@@ -48,7 +48,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       });
     };
     const onUserLeft    = ({ socketId }: any)   => removeParticipant(sanitize(socketId));
-    const onTranscript  = (chunk: string)       => appendTranscript(sanitize(chunk));
+    const onTranscript  = (chunk: string)       => appendTranscript(roomId, sanitize(chunk));
     const onMediaState  = ({ socketId, isMuted, isVideoOff, isScreenSharing }: any) =>
       updateParticipant(sanitize(socketId), {
         isMuted:         Boolean(isMuted),
