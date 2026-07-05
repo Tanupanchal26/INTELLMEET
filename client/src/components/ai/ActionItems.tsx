@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { CheckSquare, User, Zap, Check, Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAI } from '../../hooks/useAI';
+import { useAIStore } from '../../store/ai/ai.store';
 import { aiService } from '../../api/ai.api';
 import Badge from '../common/Badge';
 
@@ -12,7 +13,7 @@ const PRIORITY_BADGE = {
 } as const;
 
 const ActionItems = ({ meetingId }: { meetingId: string }) => {
-  const { actionItems, isGenerating, setActionItems, toggleActionItemDone } = useAI(meetingId);
+  const { actionItems, isGenerating, toggleActionItemDone } = useAI(meetingId);
 
   // queryKey includes meetingId — React Query never serves another meeting's cache
   const { data } = useQuery({
@@ -27,9 +28,9 @@ const ActionItems = ({ meetingId }: { meetingId: string }) => {
   // Sync fetched items into the per-meeting store slot (only once, only for this meeting)
   useEffect(() => {
     if (data?.actionItems?.length && actionItems.length === 0) {
-      setActionItems(data.actionItems);
+      useAIStore.getState().setActionItems(meetingId, data.actionItems);
     }
-  }, [data?.actionItems]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data?.actionItems, meetingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isGenerating) return (
     <div className="flex items-center justify-center h-full gap-2">

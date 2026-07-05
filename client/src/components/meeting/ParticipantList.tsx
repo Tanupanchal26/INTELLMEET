@@ -4,7 +4,13 @@ import { useAppSelector } from '../../hooks/useAppDispatch';
 import { clsx } from 'clsx';
 
 const ParticipantList = () => {
-  const { participants, currentMeeting, isMuted, isVideoOff, isSpeaking, raisedHands, localHandRaised } = useMeetingStore();
+  const participants    = useMeetingStore((s) => s.participants);
+  const currentMeeting = useMeetingStore((s) => s.currentMeeting);
+  const isMuted        = useMeetingStore((s) => s.isMuted);
+  const isVideoOff     = useMeetingStore((s) => s.isVideoOff);
+  const isSpeaking     = useMeetingStore((s) => s.isSpeaking);
+  const raisedHands    = useMeetingStore((s) => s.raisedHands);
+  const localHandRaised = useMeetingStore((s) => s.localHandRaised);
   const user = useAppSelector((s) => s.auth.user);
   const isHostUser = user?.id === currentMeeting?.host;
 
