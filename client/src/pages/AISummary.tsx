@@ -9,6 +9,7 @@ import Button from '../components/common/Button';
 import Badge from '../components/common/Badge';
 import { aiService } from '../api/ai.api';
 import { exportService } from '../api/export.api';
+import { taskService } from '../api/task.api';
 import { useAIStore } from '../store/ai/ai.store';
 import { useAppSelector } from '../hooks/useAppDispatch';
 import { clsx } from 'clsx';
@@ -190,11 +191,27 @@ const AISummary = () => {
 
   const handleSaveAsTasks = async () => {
     if (!selectedId) return;
+    // Collect items to save: follow-up suggestions first, fall back to action items
+    const itemsToSave = followUpSuggestions.length > 0 ? followUpSuggestions : displayActions;
+    if (!itemsToSave.length) {
+      toast.error('No follow-up suggestions or action items to save as tasks');
+      return;
+    }
     try {
-      const res: any = await aiService.extractAndSaveTasks(selectedId);
-      const count = res?.data?.tasks?.length ?? res?.tasks?.length ?? 0;
-      toast.success(`${count} tasks created from action items`);
-    } catch { toast.error('Failed to save tasks'); }
+      await Promise.all(
+        itemsToSave.map((item: any) =>
+          taskService.create({
+            title:    item.text,
+            priority: item.priority ?? 'medium',
+            status:   'todo',
+          })
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success(`${itemsToSave.length} tasks saved to Task Board`);
+    } catch {
+      toast.error('Failed to save tasks');
+    }
   };
 
   const handleExportPDF = () => {
@@ -479,6 +496,11 @@ const AISummary = () => {
                     </div>
                   ) : followUpSuggestions.length > 0 ? (
                     <div className="flex flex-col gap-2.5">
+                      <div className="flex justify-end mb-1">
+                        <Button size="sm" leftIcon={<CheckCircle2 size={12} />} onClick={handleSaveAsTasks}>
+                          Save as Tasks
+                        </Button>
+                      </div>
                       {followUpSuggestions.map((s: any, i: number) => (
                         <div key={i} className="flex items-start gap-3 p-4 rounded-xl bg-white/40 border border-[var(--color-border)] hover:border-pink-400/50 hover:bg-white/60 transition-all">
                           <div className={clsx(
