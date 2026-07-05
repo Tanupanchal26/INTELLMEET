@@ -66,7 +66,11 @@ export const connectSocket = (token: string): Socket => {
 };
 
 export const disconnectSocket = (): void => {
-  socket?.disconnect();
+  if (socket) {
+    socket.disconnect();
+    socket.removeAllListeners();
+    socket = null;
+  }
   notifyState('disconnected');
 };
 

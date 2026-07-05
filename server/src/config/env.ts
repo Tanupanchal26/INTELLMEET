@@ -64,6 +64,8 @@ const schema = Joi.object({
 
   GEMINI_API_KEY: Joi.string().optional().allow(''),
 
+  AI_MODE: Joi.string().valid('demo', 'gemini', 'openai').default('demo'),
+
   SMTP_HOST: Joi.string().optional().allow(''),
   SMTP_PORT: Joi.number().default(587),
   SMTP_USER: Joi.string().optional().allow(''),

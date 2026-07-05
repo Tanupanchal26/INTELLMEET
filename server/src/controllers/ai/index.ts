@@ -36,7 +36,7 @@ exports.getAIResult = asyncHandler(async (req, res) => {
 // ── POST /ai/:meetingId/summary ───────────────────────────────────────────────
 exports.generateSummary = asyncHandler(async (req, res) => {
   const { transcript, length = 'medium' } = req.body;
-  
+
   if (transcript && transcript.length > MAX_TRANSCRIPT)
     throw ApiError.badRequest(`transcript exceeds ${MAX_TRANSCRIPT} character limit`);
   if (!['short', 'medium', 'detailed'].includes(length))
@@ -51,14 +51,7 @@ exports.generateSummary = asyncHandler(async (req, res) => {
   }
 
   const summary = await aiService.summarize(req.params.meetingId, length);
-  
-  if (!summary) {
-    return res.status(400).json(
-      new ApiResponse(400, "Meeting transcript is empty. Generate or upload a transcript before requesting a summary.")
-    );
-  }
-  
-  return ApiResponse.ok(res, { summary }, 'Summary generated');
+  return ApiResponse.ok(res, { summary: summary || '' }, 'Summary generated');
 });
 
 // ── GET /ai/:meetingId/summary ────────────────────────────────────────────────
@@ -109,12 +102,6 @@ exports.saveTranscript = asyncHandler(async (req, res) => {
 
 // ── GET /ai/:meetingId/action-items ───────────────────────────────────────────
 exports.getActionItems = asyncHandler(async (req, res) => {
-  const result = await AIResult.findOne({ meeting: req.params.meetingId });
-  if (!result?.transcript && !result?.transcriptChunks?.length)
-    return res.status(400).json(
-      new ApiResponse(400, "Meeting transcript is empty. Generate or upload a transcript before requesting action items.")
-    );
-
   const actionItems = await aiService.getActionItems(req.params.meetingId);
   return ApiResponse.ok(res, { actionItems }, 'Action items extracted');
 });
@@ -182,11 +169,6 @@ exports.generateMinutes = asyncHandler(async (req, res) => {
       { upsert: true, new: true }
     );
   }
-
-  // Verify a transcript exists (either just saved or already in DB)
-  const existing = await AIResult.findOne({ meeting: req.params.meetingId }).select('transcript transcriptChunks');
-  const hasTranscript = existing?.transcript?.trim() || existing?.transcriptChunks?.length;
-  if (!hasTranscript) throw ApiError.badRequest('No transcript found. Generate or upload a transcript first.');
 
   const job = await enqueueAIJob('minutes', {
     meetingId:    req.params.meetingId,

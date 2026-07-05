@@ -45,7 +45,6 @@ const IS_DEV = import.meta.env.DEV;
 
 const AuthSync = () => {
   const dispatch = useAppDispatch();
-  const isInitializing = useAppSelector((s) => s.auth.isInitializing);
   const isAuthenticated = useAppSelector((s) => s.auth.isAuthenticated);
   const { socket } = useSocket();
 
@@ -60,60 +59,83 @@ const AuthSync = () => {
     return () => { socket.off('notification:new', onNew); };
   }, [isAuthenticated, socket, dispatch]);
 
-  // Validate stored token on app boot — catches expired tokens before any route renders
+  // ── Session restoration on every app boot ────────────────────────────────
+  // isInitializing is ALWAYS true on boot (auth.slice.ts). This effect runs
+  // once and resolves the session via one of three paths:
+  //   1. Valid access token in localStorage  → /users/me succeeds directly
+  //   2. Expired access token                → axios interceptor refreshes it
+  //                                            transparently, /users/me retried
+  //   3. No access token at all              → proactive /auth/refresh-token
+  //                                            call uses the HttpOnly cookie
+  // This covers browser refresh, new tab, and "close & reopen" scenarios.
   useEffect(() => {
-    if (!isInitializing) return;
+    let cancelled = false;
 
-    authService.me()
-      .then((res) => {
+    const restoreSession = async () => {
+      const storedToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+
+      // Path 3: no access token — try the refresh cookie proactively before
+      // hitting /users/me so we don't waste a round-trip with a guaranteed 401.
+      if (!storedToken) {
+        try {
+          const refreshed = await authService.refreshToken();
+          const newToken = (refreshed as any)?.data?.accessToken ?? (refreshed as any)?.accessToken;
+          if (!newToken) throw new Error('no token');
+          localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newToken);
+          window.dispatchEvent(new CustomEvent('auth:tokenRefreshed', { detail: newToken }));
+          // Fall through to /users/me with the new token in localStorage
+        } catch {
+          // No valid refresh cookie either — truly unauthenticated
+          if (!cancelled) dispatch(clearAuth());
+          return;
+        }
+      }
+
+      // Paths 1 & 2: call /users/me. If the access token is expired the axios
+      // interceptor will transparently refresh it and retry the request, so
+      // from this code's perspective it either resolves or rejects.
+      try {
+        const res = await authService.me();
         const user = res.data;
+        if (cancelled) return;
         if (user?.id || (user as any)?._id) {
           const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN) ?? '';
           dispatch(setCredentials({ user, accessToken: token }));
         } else {
           dispatch(clearAuth());
         }
-      })
-      .catch((err: any) => {
-        // me() failed — could be expired access token (interceptor will have
-        // already attempted a refresh). Check if we still have a token after
-        // the interceptor ran (meaning refresh succeeded but me() still failed
-        // for another reason), or if the token is now gone (refresh also failed).
-        const tokenAfterRefresh = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-        const refreshStatus = err?.response?.status;
-
-        if (tokenAfterRefresh && refreshStatus !== 401 && refreshStatus !== 403) {
-          // Refresh succeeded (token still present) — re-try me() once
-          authService.me()
-            .then((res) => {
-              const user = res.data;
-              if (user?.id || (user as any)?._id) {
-                dispatch(setCredentials({ user, accessToken: tokenAfterRefresh }));
-              } else {
-                dispatch(clearAuth());
-              }
-            })
-            .catch(() => dispatch(clearAuth()));
-        } else if (refreshStatus === 401 || refreshStatus === 403) {
-          // Refresh token is also invalid — session truly expired
+      } catch (err: any) {
+        if (cancelled) return;
+        const status = err?.response?.status;
+        if (status === 401 || status === 403) {
+          // Both access token and refresh token are invalid — truly logged out
           dispatch(clearAuth());
         } else {
-          // Network error or server down — keep user logged in, just mark initialized
+          // Network error / server down — keep the user logged in optimistically
+          // and mark initialization complete so the app doesn't hang forever.
           dispatch(setInitialized());
         }
-      });
-  }, [dispatch, isInitializing]);
+      }
+    };
 
+    restoreSession();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Global token-refresh & logout event bus ───────────────────────────────
   useEffect(() => {
     const onRefresh = (e: Event) => {
       const newToken = (e as CustomEvent<string>).detail;
       dispatch(refreshAccessToken(newToken));
-      // Re-authenticate the socket with the new token so it doesn't drop
-      import('./utils/socket').then(({ connectSocket }) => {
+      // Reconnect socket with the new token — disconnect first so the server
+      // sees a fresh handshake with the updated auth credential.
+      import('./utils/socket').then(({ disconnectSocket, connectSocket }) => {
+        disconnectSocket();
         connectSocket(newToken);
       });
     };
-    const onLogout  = () => dispatch(clearAuth());
+    const onLogout = () => dispatch(clearAuth());
     window.addEventListener('auth:tokenRefreshed', onRefresh);
     window.addEventListener('auth:logout', onLogout);
     return () => {
@@ -121,6 +143,7 @@ const AuthSync = () => {
       window.removeEventListener('auth:logout', onLogout);
     };
   }, [dispatch]);
+
   return null;
 };
 

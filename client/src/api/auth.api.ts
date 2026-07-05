@@ -9,9 +9,10 @@ export interface RegisterPayload { name: string; email: string; password: string
 export interface ApiEnvelope<T> { success: boolean; data: T; message: string; }
 
 export const authService = {
-  login:    (data: LoginPayload)    => api.post<never, ApiEnvelope<{ user: User; accessToken: string }>>('/auth/login', data),
-  register: (data: RegisterPayload) => api.post<never, ApiEnvelope<{ user: User; accessToken: string }>>('/auth/signup', data),
-  logout:   ()                      => api.post('/auth/logout'),
+  login:        (data: LoginPayload)    => api.post<never, ApiEnvelope<{ user: User; accessToken: string }>>('/auth/login', data),
+  register:     (data: RegisterPayload) => api.post<never, ApiEnvelope<{ user: User; accessToken: string }>>('/auth/signup', data),
+  logout:       ()                      => api.post('/auth/logout'),
+  refreshToken: ()                      => api.post<never, ApiEnvelope<{ accessToken: string; user: User }>>('/auth/refresh-token', {}),
   // /users/me returns { success, data: User, message } after interceptor unwrap
-  me:       ()                      => api.get<never, ApiEnvelope<User>>('/users/me'),
+  me:           ()                      => api.get<never, ApiEnvelope<User>>('/users/me'),
 };

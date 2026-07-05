@@ -1,6 +1,6 @@
 // @ts-nocheck
-const AIResult  = require('../models/AIResult');
-const Meeting   = require('../models/Meeting');
+const AIResult     = require('../models/AIResult');
+const Meeting      = require('../models/Meeting');
 const notifService = require('./notification.service');
 const { summarize, extractKeywords, extractFollowUpSuggestions } = require('../ai/summarizer');
 const { extractActionItems, extractDecisions } = require('../ai/actionItems');
@@ -10,6 +10,8 @@ const { semanticSearch }       = require('../ai/semanticSearch');
 const { getRedisClient }       = require('../config/redis');
 const { CACHE_TTL }            = require('../constants');
 const logger = require('../shared/utils/logger').default;
+
+const IS_DEMO = (process.env.AI_MODE || 'demo') === 'demo';
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
 const cacheGet = async (key: string) => {
@@ -37,14 +39,33 @@ const cacheDel = async (...keys: string[]) => {
 const resolveTranscript = async (meetingId: string): Promise<string> => {
   const result = await AIResult.findOne({ meeting: meetingId });
   if (!result) return '';
-  // Prefer the consolidated transcript field
   if (result.transcript?.trim()) return result.transcript;
-  // Fall back to streaming chunks (populated during live meeting via socket)
   const chunks = result.transcriptChunks || [];
   if (chunks.length > 0) {
     return chunks.map((c: any) => `${c.speaker ?? 'Speaker'}: ${c.text}`).join('\n');
   }
   return '';
+};
+
+// ── Meeting context builder ───────────────────────────────────────────────────
+// Passes real meeting metadata to the provider so demo responses are data-aware.
+const resolveMeetingCtx = async (meetingId: string) => {
+  try {
+    const mtg = await Meeting.findById(meetingId)
+      .populate('participants', 'name')
+      .lean();
+    if (!mtg) return { meetingId };
+    return {
+      meetingId,
+      title:        mtg.title,
+      participants: (mtg.participants || []).map((p: any) => p.name || p),
+      duration:     mtg.duration ? Math.round(mtg.duration / 60) : undefined,
+      date:         (mtg.startedAt || mtg.createdAt)?.toLocaleDateString?.() || undefined,
+      host:         undefined, // populated separately if needed
+    };
+  } catch {
+    return { meetingId };
+  }
 };
 
 exports.saveTranscript = async (meetingId: string, transcript: string) => {
@@ -67,16 +88,21 @@ exports.summarize = async (meetingId: string, length: 'short' | 'medium' | 'deta
   const cached = await cacheGet(cacheKey);
   if (cached) return cached;
 
-  const transcript = await resolveTranscript(meetingId);
-  if (!transcript) return '';
+  const [transcript, ctx] = await Promise.all([
+    resolveTranscript(meetingId),
+    resolveMeetingCtx(meetingId),
+  ]);
+
+  // In demo mode we generate even without a transcript
+  if (!transcript && !IS_DEMO) return '';
 
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { processingStatus: 'processing' }, { upsert: true });
 
   try {
     const [summary, actionItems, decisions] = await Promise.all([
-      summarize(transcript, length),
-      extractActionItems(transcript),
-      extractDecisions(transcript),
+      summarize(transcript, length, ctx),
+      extractActionItems(transcript, ctx),
+      extractDecisions(transcript, ctx),
     ]);
 
     await AIResult.findOneAndUpdate(
@@ -87,7 +113,6 @@ exports.summarize = async (meetingId: string, length: 'short' | 'medium' | 'deta
     await Meeting.findByIdAndUpdate(meetingId, { summary });
     await cacheSet(cacheKey, summary);
 
-    // Notify all participants that summary is ready
     const mtg = await Meeting.findById(meetingId).select('participants host tenantId title meetingId').lean();
     if (mtg) {
       const participantIds = [
@@ -114,10 +139,14 @@ exports.getActionItems = async (meetingId: string) => {
   const result = await AIResult.findOne({ meeting: meetingId });
   if (result?.actionItems?.length) return result.actionItems;
 
-  const transcript = await resolveTranscript(meetingId);
-  if (!transcript) return [];
+  const [transcript, ctx] = await Promise.all([
+    resolveTranscript(meetingId),
+    resolveMeetingCtx(meetingId),
+  ]);
 
-  const actionItems = await extractActionItems(transcript);
+  if (!transcript && !IS_DEMO) return [];
+
+  const actionItems = await extractActionItems(transcript, ctx);
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { actionItems }, { upsert: true });
   return actionItems;
 };
@@ -127,10 +156,14 @@ exports.getDecisions = async (meetingId: string) => {
   const result = await AIResult.findOne({ meeting: meetingId });
   if (result?.decisions?.length) return result.decisions;
 
-  const transcript = await resolveTranscript(meetingId);
-  if (!transcript) return [];
+  const [transcript, ctx] = await Promise.all([
+    resolveTranscript(meetingId),
+    resolveMeetingCtx(meetingId),
+  ]);
 
-  const decisions = await extractDecisions(transcript);
+  if (!transcript && !IS_DEMO) return [];
+
+  const decisions = await extractDecisions(transcript, ctx);
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { decisions }, { upsert: true });
   return decisions;
 };
@@ -147,10 +180,14 @@ exports.getKeywords = async (meetingId: string) => {
     return result.keywords;
   }
 
-  const transcript = await resolveTranscript(meetingId);
-  if (!transcript) return { topics: [], people: [], projects: [], technologies: [], frequentTerms: [] };
+  const [transcript, ctx] = await Promise.all([
+    resolveTranscript(meetingId),
+    resolveMeetingCtx(meetingId),
+  ]);
 
-  const keywords = await extractKeywords(transcript);
+  if (!transcript && !IS_DEMO) return { topics: [], people: [], projects: [], technologies: [], frequentTerms: [] };
+
+  const keywords = await extractKeywords(transcript, ctx);
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { keywords }, { upsert: true });
   await cacheSet(cacheKey, keywords);
   return keywords;
@@ -167,13 +204,13 @@ exports.getSmartNotes = async (meetingId: string) => {
     resolveTranscript(meetingId),
   ]);
 
-  if (!transcript) return null;
+  if (!transcript && !IS_DEMO) return null;
 
   const agendaItems = (meeting?.agenda || []).map((a: any) => a.title).filter(Boolean);
   const smartNotes = await generateSmartNotes({
-    transcript,
-    title: meeting?.title || 'Meeting',
-    agenda: agendaItems,
+    transcript: transcript || '',
+    title:      meeting?.title || 'Meeting',
+    agenda:     agendaItems,
   });
 
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { smartNotes }, { upsert: true });
@@ -193,10 +230,10 @@ exports.generateMeetingMinutes = async (meetingId: string) => {
   ]);
 
   if (!meeting) throw new Error('Meeting not found');
-  if (!transcript) return '';
+  if (!transcript && !IS_DEMO) return '';
 
   const minutes = await generateMinutes({
-    transcript,
+    transcript:   transcript || '',
     title:        meeting.title,
     participants: (meeting.participants || []).map((p: any) => p.name),
     date:         (meeting.startedAt || meeting.createdAt).toLocaleDateString(),
@@ -209,10 +246,11 @@ exports.generateMeetingMinutes = async (meetingId: string) => {
 
 // ── AI Assistant ──────────────────────────────────────────────────────────────
 exports.assistantChat = async (meetingId: string, tenantId: string, userMessage: string, history: any[] = []) => {
-  const aiResult = await AIResult.findOne({ meeting: meetingId });
-  const tenantMeetings = tenantId
-    ? await Meeting.find({ tenantId }).select('title').limit(20).lean()
-    : [];
+  const [aiResult, meeting, tenantMeetings] = await Promise.all([
+    AIResult.findOne({ meeting: meetingId }),
+    Meeting.findById(meetingId).populate('participants', 'name').lean(),
+    tenantId ? Meeting.find({ tenantId }).select('title').limit(20).lean() : Promise.resolve([]),
+  ]);
 
   const transcript = aiResult?.transcript ||
     (aiResult?.transcriptChunks || []).map((c: any) => `${c.speaker}: ${c.text}`).join('\n');
@@ -222,13 +260,17 @@ exports.assistantChat = async (meetingId: string, tenantId: string, userMessage:
     summary:       aiResult?.summary || '',
     history,
     meetingTitles: tenantMeetings.map((m: any) => m.title),
+    meetingTitle:  meeting?.title,
   });
 };
 
 // ── Generate Tasks ────────────────────────────────────────────────────────────
 exports.generateTasksFromMeeting = async (meetingId: string, prompt = '') => {
-  const transcript = await resolveTranscript(meetingId);
-  return generateTasks(prompt || 'Extract all tasks from this meeting', transcript);
+  const [transcript, ctx] = await Promise.all([
+    resolveTranscript(meetingId),
+    resolveMeetingCtx(meetingId),
+  ]);
+  return generateTasks(prompt || 'Extract all tasks from this meeting', transcript || '', ctx);
 };
 
 // ── Semantic Search ───────────────────────────────────────────────────────────
@@ -265,10 +307,14 @@ exports.getFollowUpSuggestions = async (meetingId: string) => {
     return result.followUpSuggestions;
   }
 
-  const transcript = await resolveTranscript(meetingId);
-  if (!transcript) return [];
+  const [transcript, ctx] = await Promise.all([
+    resolveTranscript(meetingId),
+    resolveMeetingCtx(meetingId),
+  ]);
 
-  const followUpSuggestions = await extractFollowUpSuggestions(transcript);
+  if (!transcript && !IS_DEMO) return [];
+
+  const followUpSuggestions = await extractFollowUpSuggestions(transcript || '', ctx);
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { followUpSuggestions }, { upsert: true });
   await cacheSet(cacheKey, followUpSuggestions);
   return followUpSuggestions;
@@ -282,7 +328,15 @@ exports.runFullPipeline = async (meetingId: string) => {
   ]);
 
   if (!meeting) throw new Error('Meeting not found');
-  if (!transcript) throw new Error('No transcript available');
+  if (!transcript && !IS_DEMO) throw new Error('No transcript available');
+
+  const ctx = {
+    meetingId,
+    title:        meeting.title,
+    participants: (meeting.participants || []).map((p: any) => p.name),
+    duration:     meeting.duration ? Math.round(meeting.duration / 60) : undefined,
+    date:         (meeting.startedAt || meeting.createdAt)?.toLocaleDateString?.(),
+  };
 
   await AIResult.findOneAndUpdate(
     { meeting: meetingId },
@@ -291,23 +345,24 @@ exports.runFullPipeline = async (meetingId: string) => {
   );
 
   try {
+    const tx = transcript || '';
     const [summary, actionItems, decisions, keywords, followUpSuggestions, minutes, smartNotes] = await Promise.all([
-      summarize(transcript, 'medium'),
-      extractActionItems(transcript),
-      extractDecisions(transcript),
-      extractKeywords(transcript),
-      extractFollowUpSuggestions(transcript),
+      summarize(tx, 'medium', ctx),
+      extractActionItems(tx, ctx),
+      extractDecisions(tx, ctx),
+      extractKeywords(tx, ctx),
+      extractFollowUpSuggestions(tx, ctx),
       generateMinutes({
-        transcript,
+        transcript:   tx,
         title:        meeting.title,
         participants: (meeting.participants || []).map((p: any) => p.name),
         date:         (meeting.startedAt || meeting.createdAt).toLocaleDateString(),
-      }),
+      }, ctx),
       generateSmartNotes({
-        transcript,
-        title: meeting.title,
-        agenda: (meeting.agenda || []).map((a: any) => a.title).filter(Boolean),
-      }),
+        transcript: tx,
+        title:      meeting.title,
+        agenda:     (meeting.agenda || []).map((a: any) => a.title).filter(Boolean),
+      }, ctx),
     ]);
 
     await AIResult.findOneAndUpdate(
@@ -322,7 +377,6 @@ exports.runFullPipeline = async (meetingId: string) => {
     );
     await Meeting.findByIdAndUpdate(meetingId, { summary });
 
-    // Bust all caches
     await cacheDel(
       `ai:summary:${meetingId}:medium`,
       `ai:keywords:${meetingId}`,
@@ -331,7 +385,6 @@ exports.runFullPipeline = async (meetingId: string) => {
       `ai:followup:${meetingId}`,
     );
 
-    // Notify participants: summary ready
     const participantIds = [
       ...new Set([
         String(meeting.host),
@@ -340,7 +393,6 @@ exports.runFullPipeline = async (meetingId: string) => {
     ];
     notifService.notifyAISummaryReady(meeting, participantIds).catch(() => {});
 
-    // Notify action item assignees
     for (const item of actionItems) {
       if (item.assignee) {
         notifService.notifyActionItemAssigned(meeting, item, item.assignee, null).catch(() => {});
