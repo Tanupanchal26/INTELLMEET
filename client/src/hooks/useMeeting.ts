@@ -28,8 +28,6 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
   const onBeforeLeaveRef = useRef(onBeforeLeave);
   useEffect(() => { onBeforeLeaveRef.current = onBeforeLeave; }, [onBeforeLeave]);
 
-  const onBeforeLeaveStable = useCallback(() => onBeforeLeaveRef.current?.(), []);
-
   useEffect(() => {
     // Read the socket inside the effect — getSocket() returns the singleton,
     // never a new reference. This removes socket from the dep array entirely,
@@ -63,7 +61,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
     };
 
     const onUserLeft  = ({ socketId }: any) => removeParticipant(sanitize(socketId));
-    const onTranscript = (chunk: string)    => appendTranscript(roomId, sanitize(chunk));
+    const onTranscript = ({ chunk }: any)   => appendTranscript(roomId, sanitize(chunk));
 
     const onMediaState = ({ socketId, isMuted, isVideoOff, isScreenSharing }: any) =>
       updateParticipant(sanitize(socketId), {
@@ -88,6 +86,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       }
     };
 
+    const reactionTimers: ReturnType<typeof setTimeout>[] = [];
     const onReaction = ({ socketId, userId, name, emoji }: any) => {
       const id = `${sanitize(socketId)}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       addReaction({
@@ -97,7 +96,8 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
         name:     sanitize(name),
         emoji:    sanitize(emoji),
       });
-      setTimeout(() => removeReaction(id), 3000);
+      const t = setTimeout(() => removeReaction(id), 3000);
+      reactionTimers.push(t);
     };
 
     const onSpeaking = ({ socketId, isSpeaking }: any) =>
@@ -120,13 +120,13 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
           handRaised:      existing?.handRaised ?? Boolean(p.handRaised),
         };
       });
-      // Skip update if participant list is identical — prevents spurious re-renders
+      // Skip update if participant list is identical — order-independent via Map
+      const currentMap = new Map(current.map(x => [x.socketId, x]));
       const isSame =
         mapped.length === current.length &&
-        mapped.every((p, i) => {
-          const c = current[i];
+        mapped.every(p => {
+          const c = currentMap.get(p.socketId);
           return c &&
-            c.socketId        === p.socketId &&
             c.isMuted         === p.isMuted &&
             c.isVideoOff      === p.isVideoOff &&
             c.isScreenSharing === p.isScreenSharing &&
@@ -167,13 +167,20 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
     };
 
     const onReconnect = () => {
-      // Guard: only update store if not already in call — prevents spurious re-renders
+      socket.emit('meeting:join', roomId);
       if (!useMeetingStore.getState().isInCall) setInCall(true);
     };
 
+    // Emit join — this triggers the entire backend meeting lifecycle
+    if (socket.connected) {
+      socket.emit('meeting:join', roomId);
+    } else {
+      socket.once('connect', () => socket.emit('meeting:join', roomId));
+    }
+
     socket.on('meeting:user-joined',          onUserJoined);
     socket.on('meeting:user-left',            onUserLeft);
-    socket.on('ai:transcript',                onTranscript);
+    socket.on('meeting:transcript-chunk',     onTranscript);
     socket.on('meeting:media-state',          onMediaState);
     socket.on('meeting:raise-hand',           onRaiseHand);
     socket.on('meeting:reaction',             onReaction);
@@ -192,7 +199,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
     return () => {
       socket.off('meeting:user-joined',         onUserJoined);
       socket.off('meeting:user-left',           onUserLeft);
-      socket.off('ai:transcript',               onTranscript);
+      socket.off('meeting:transcript-chunk',    onTranscript);
       socket.off('meeting:media-state',         onMediaState);
       socket.off('meeting:raise-hand',          onRaiseHand);
       socket.off('meeting:reaction',            onReaction);
@@ -204,6 +211,7 @@ export const useMeeting = (roomId?: string, onBeforeLeave?: () => void) => {
       socket.off('meeting:request-media-state', onRequestMediaState);
       socket.off('connect',                     onReconnect);
       socket.off('dashboard:refresh',           onDashboardRefresh);
+      reactionTimers.forEach(clearTimeout);
     };
   // socket is intentionally omitted — we call getSocket() inside the effect.
   // navigate and qc are accessed via stable refs.

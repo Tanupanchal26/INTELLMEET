@@ -8,14 +8,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 // ── Per-tile reaction overlay ─────────────────────────────────────────────────
 // Reads only the reactions that belong to this tile's socketId/userId
 const TileReactions = ({ tileSocketId, tileUserId }: { tileSocketId: string; tileUserId: string }) => {
-  const reactions = useMeetingStore((s) =>
-    s.reactions.filter(r => r.socketId === tileSocketId || r.userId === tileUserId)
-  );
+  const reactions = useMeetingStore((s) => s.reactions);
+  const tileReactions = reactions.filter(r => r.socketId === tileSocketId || r.userId === tileUserId);
 
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
       <AnimatePresence>
-        {reactions.map((r) => (
+        {tileReactions.map((r) => (
           <motion.div
             key={r.id}
             className="absolute bottom-14 left-1/2 -translate-x-1/2 text-4xl select-none drop-shadow-lg"
@@ -169,10 +168,6 @@ const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream |
   const localHandRaised = useMeetingStore((s) => s.localHandRaised);
   const user = useAppSelector((s) => s.auth.user);
   const isHostUser = user?.id === currentMeeting?.host;
-
-  const socket = (() => {
-    try { return (window as any).__intellmeet_socket_id__ as string | undefined; } catch { return undefined; }
-  })();
 
   const allTiles = [
     {

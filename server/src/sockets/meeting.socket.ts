@@ -98,10 +98,8 @@ module.exports = (io: Server, socket: MeetingSocket): void => {
       const room = io.sockets.adapter.rooms.get(`meeting:${roomId}`);
 
       io.to(`meeting:${roomId}`).emit('meeting:participant-count', room?.size ?? 0);
-      // Send full participants list (with media state) to the new joiner
-      socket.emit('meeting:participants-list', participants);
-      // Broadcast updated list to everyone so all tiles refresh
-      socket.to(`meeting:${roomId}`).emit('meeting:participants-list', participants);
+      // Single broadcast to everyone — prevents client setParticipants running twice
+      io.to(`meeting:${roomId}`).emit('meeting:participants-list', participants);
 
       // Ask all existing participants to re-broadcast their media state
       // so the new joiner immediately sees correct camera/mic status
