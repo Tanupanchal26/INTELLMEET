@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { Sparkles, Loader2, FileText, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAI } from '../../hooks/useAI';
+import { useAIStore } from '../../store/ai/ai.store';
 import { aiService } from '../../api/ai.api';
 import Button from '../common/Button';
 
@@ -23,8 +24,8 @@ const SummaryCard = ({ meetingId }: { meetingId: string }) => {
 
   // Sync fetched summary into the per-meeting store slot (only once, only for this meeting)
   useEffect(() => {
-    if (data?.summary && !summary) setSummary(data.summary);
-  }, [data?.summary]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (data?.summary && !summary) useAIStore.getState().setSummary(meetingId, data.summary);
+  }, [data?.summary, meetingId, summary]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="p-3 flex flex-col gap-3 h-full">

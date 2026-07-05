@@ -57,11 +57,16 @@ interface ControlsProps {
 const Controls = ({ localStream, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks, startRecording, stopRecording, leaveMeeting, endMeeting }: ControlsProps) => {
   const { id: meetingId } = useParams();
   const user = useAppSelector((s) => s.auth.user);
-  const {
-    isMuted, isVideoOff, isScreenSharing, isRecording,
-    toggleMute, toggleVideo,
-    currentMeeting, setHandRaised, localHandRaised, setLocalHandRaised,
-  } = useMeetingStore();
+  const isMuted          = useMeetingStore((s) => s.isMuted);
+  const isVideoOff       = useMeetingStore((s) => s.isVideoOff);
+  const isScreenSharing  = useMeetingStore((s) => s.isScreenSharing);
+  const isRecording      = useMeetingStore((s) => s.isRecording);
+  const toggleMute       = useMeetingStore((s) => s.toggleMute);
+  const toggleVideo      = useMeetingStore((s) => s.toggleVideo);
+  const currentMeeting   = useMeetingStore((s) => s.currentMeeting);
+  const setHandRaised    = useMeetingStore((s) => s.setHandRaised);
+  const localHandRaised  = useMeetingStore((s) => s.localHandRaised);
+  const setLocalHandRaised = useMeetingStore((s) => s.setLocalHandRaised);
   const isHost = currentMeeting?.host === user?.id || (currentMeeting?.host as any)?._id === user?.id;
   const [showReactions, setShowReactions] = useState(false);
 

@@ -7,7 +7,9 @@ import { getSocket } from '../utils/socket';
 export const useChat = (meetingId: string) => {
   const { socket } = useSocket();
   const user = useAppSelector((s) => s.auth.user);
-  const { messages, typingUsers, addMessage, setMessages, setTyping, markRead } = useChatStore();
+  const messages     = useChatStore((s) => s.messages);
+  const typingUsers  = useChatStore((s) => s.typingUsers);
+  const { addMessage, setMessages, setTyping, markRead } = useChatStore.getState();
 
   useEffect(() => {
     if (!socket || !meetingId) return;
