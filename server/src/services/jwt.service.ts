@@ -61,24 +61,30 @@ export const verifyRefreshToken = async (token: string): Promise<RefreshTokenPay
   return payload;
 };
 
+/** Verify JWT signature only — no DB lookup. Use when the caller will do its own DB check. */
+export const verifyRefreshTokenSignature = (token: string): RefreshTokenPayload =>
+  jwt.verify(token, config.jwt.refreshSecret, JWT_OPTIONS) as RefreshTokenPayload;
+
 export const hashToken = (token: string): string =>
   crypto.createHash('sha256').update(token).digest('hex');
 
 export const setRefreshCookie = (res: Response, refreshToken: string): void => {
+  const isProd = process.env.NODE_ENV === 'production';
   res.cookie(COOKIE_NAMES.REFRESH_TOKEN, refreshToken, {
     httpOnly: true,
-    secure:   true,
-    sameSite: 'none',
+    secure:   isProd,
+    sameSite: isProd ? 'none' : 'lax',
     maxAge:   AUTH.COOKIE_MAX_AGE,
     path:     '/',
   });
 };
 
 export const clearRefreshCookie = (res: Response): void => {
+  const isProd = process.env.NODE_ENV === 'production';
   res.clearCookie(COOKIE_NAMES.REFRESH_TOKEN, {
     httpOnly: true,
-    secure:   true,
-    sameSite: 'none',
+    secure:   isProd,
+    sameSite: isProd ? 'none' : 'lax',
     path:     '/',
   });
 };

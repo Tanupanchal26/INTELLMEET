@@ -102,24 +102,26 @@ export const logoutAll = async (userId: string): Promise<void> => {
 export const refreshTokens = async (rawRefreshToken: string): Promise<AuthResult> => {
   if (!rawRefreshToken) throw ApiError.unauthorized('Refresh token required');
 
+  // Step 1: verify JWT signature only (no DB hit) — fast rejection of forged tokens
   let decoded: { id: string };
   try {
-    decoded = await jwtService.verifyRefreshToken(rawRefreshToken);
+    decoded = jwtService.verifyRefreshTokenSignature(rawRefreshToken);
   } catch {
     throw ApiError.unauthorized('Invalid or expired refresh token');
   }
 
+  // Step 2: single DB lookup — checks token exists in DB and loads the user
   const hashedIncoming = jwtService.hashToken(rawRefreshToken);
   const user           = await userRepo.findByRefreshToken(hashedIncoming);
 
   if (!user) {
+    // Token was valid JWT but not in DB — possible reuse attack
     await userRepo.clearAllRefreshTokens(decoded.id);
     throw ApiError.unauthorized('Token reuse detected — all sessions revoked');
   }
 
   await userRepo.removeRefreshToken(user._id, hashedIncoming);
   const { accessToken, refreshToken: newRefresh } = await jwtService.generateTokenPair(user);
-  // generateTokenPair writes the new hashed token to the RefreshToken collection internally
 
   return { user, accessToken, refreshToken: newRefresh };
 };
