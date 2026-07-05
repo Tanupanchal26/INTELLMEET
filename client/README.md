@@ -9,7 +9,7 @@ For full project documentation see the [root README](../README.md) and the [`doc
 ## Prerequisites
 
 - Node.js 18+
-- The backend server running on `http://localhost:5000` (see [`server/`](../server/))
+- The backend server running on `https://intellmeet-b009.onrender.com` (see [`server/`](../server/))
 
 ## Setup
 
@@ -18,7 +18,7 @@ cp .env.example .env
 # .env is pre-configured for local development
 npm install
 npm run dev
-# App available at http://localhost:5173
+
 ```
 
 ## Available Scripts

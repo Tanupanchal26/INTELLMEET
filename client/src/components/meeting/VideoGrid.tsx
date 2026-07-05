@@ -159,7 +159,14 @@ const VideoTile = ({
 
 // ── Grid ──────────────────────────────────────────────────────────────────────
 const VideoGrid = ({ localStream, remoteStreams }: { localStream?: MediaStream | null; remoteStreams?: Map<string, MediaStream> }) => {
-  const { participants, isVideoOff, isMuted, isScreenSharing, currentMeeting, isSpeaking, raisedHands, localHandRaised } = useMeetingStore();
+  const participants   = useMeetingStore((s) => s.participants);
+  const isVideoOff     = useMeetingStore((s) => s.isVideoOff);
+  const isMuted        = useMeetingStore((s) => s.isMuted);
+  const isScreenSharing = useMeetingStore((s) => s.isScreenSharing);
+  const currentMeeting = useMeetingStore((s) => s.currentMeeting);
+  const isSpeaking     = useMeetingStore((s) => s.isSpeaking);
+  const raisedHands    = useMeetingStore((s) => s.raisedHands);
+  const localHandRaised = useMeetingStore((s) => s.localHandRaised);
   const user = useAppSelector((s) => s.auth.user);
   const isHostUser = user?.id === currentMeeting?.host;
 

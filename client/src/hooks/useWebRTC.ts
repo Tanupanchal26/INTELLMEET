@@ -12,18 +12,11 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   const [localStream, setLocalStream]    = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
 
-  // Stable helper: only call setLocalStream when the track composition actually
-  // changes. Comparing by track-id set prevents new MediaStream object identity
-  // from triggering downstream useEffect([localStream]) re-runs unnecessarily.
-  const updateLocalStream = useCallback((next: MediaStream | null) => {
-    setLocalStream(prev => {
-      if (!next && !prev) return prev;
-      if (!next || !prev) return next;
-      const prevIds = prev.getTracks().map(t => t.id).sort().join(',');
-      const nextIds = next.getTracks().map(t => t.id).sort().join(',');
-      return prevIds === nextIds ? prev : next;
-    });
-  }, []);
+  // ── Stable store action refs ───────────────────────────────────────────────
+  // NEVER pull store actions via selector — Zustand returns a new function
+  // reference on every render, making every useCallback that depends on them
+  // unstable, which cascades into infinite effect re-runs.
+  // Access actions directly from getState() inside callbacks instead.
 
   // keyed by remoteSocketId
   const peersRef          = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -40,12 +33,23 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   const roomIdRef = useRef(roomId);
   useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
 
-  // Read isVideoOff / isMuted via selectors so only those slices cause re-renders,
-  // not every participant/reaction update in the store.
+  // Read isVideoOff / isMuted via selectors — these are primitive booleans,
+  // safe to use as effect deps because Zustand only re-renders when the value changes.
   const isVideoOff = useMeetingStore((s) => s.isVideoOff);
   const isMuted    = useMeetingStore((s) => s.isMuted);
-  const setScreenSharing  = useMeetingStore((s) => s.setScreenSharing);
-  const setLocalSpeaking  = useMeetingStore((s) => s.setLocalSpeaking);
+
+  // ── Stable stream updater ─────────────────────────────────────────────────
+  // Only calls setLocalStream when track composition actually changes.
+  // Prevents new MediaStream object identity from triggering downstream effects.
+  const updateLocalStream = useCallback((next: MediaStream | null) => {
+    setLocalStream(prev => {
+      if (!next && !prev) return prev;
+      if (!next || !prev) return next;
+      const prevIds = prev.getTracks().map(t => t.id).sort().join(',');
+      const nextIds = next.getTracks().map(t => t.id).sort().join(',');
+      return prevIds === nextIds ? prev : next;
+    });
+  }, []);
 
   // ── Voice Activity Detection ──────────────────────────────────────────────
   const vadRef = useRef<{
@@ -67,7 +71,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         if (muted) {
           if (speakingRef.current) {
             speakingRef.current = false;
-            setLocalSpeaking(false);
+            useMeetingStore.getState().setLocalSpeaking(false);
             getSocket()?.emit('meeting:speaking', { roomId: roomIdRef.current, isSpeaking: false });
           }
           return;
@@ -77,13 +81,13 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         const speaking = avg > 12;
         if (speaking !== speakingRef.current) {
           speakingRef.current = speaking;
-          setLocalSpeaking(speaking);
+          useMeetingStore.getState().setLocalSpeaking(speaking);
           getSocket()?.emit('meeting:speaking', { roomId: roomIdRef.current, isSpeaking: speaking });
         }
       }, 150);
       vadRef.current = { ctx, analyser, source, interval };
     } catch { /* AudioContext not available */ }
-  }, [setLocalSpeaking]);
+  }, []); // no deps — reads store via getState()
 
   const stopVAD = useCallback(() => {
     if (!vadRef.current) return;
@@ -104,12 +108,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         roomId: roomIdRef.current, isMuted: muted, isVideoOff: videoOff, isScreenSharing,
       });
     }
-  }, []);
-
-  const getCurrentMediaState = useCallback(() => {
-    const { isMuted: m, isVideoOff: v } = useMeetingStore.getState();
-    return { isMuted: m, isVideoOff: v };
-  }, []);
+  }, []); // no deps — reads store via getState()
 
   const replaceVideoTrackInPeers = useCallback((track: MediaStreamTrack | null) => {
     peersRef.current.forEach(pc => {
@@ -120,7 +119,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         pc.addTrack(track, localStreamRef.current);
       }
     });
-  }, []);
+  }, []); // no deps — reads refs directly
 
   const drainIceCandidates = useCallback(async (remoteSocketId: string, pc: RTCPeerConnection) => {
     const queued = iceCandidateQueue.current.get(remoteSocketId) ?? [];
@@ -152,7 +151,6 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
 
   // ── Create peer connection ─────────────────────────────────────────────────
   const createPeerConnection = useCallback((remoteSocketId: string, isInitiator: boolean): RTCPeerConnection => {
-    // Reuse if healthy
     const existing = peersRef.current.get(remoteSocketId);
     if (existing && existing.connectionState !== 'failed' && existing.connectionState !== 'closed') {
       return existing;
@@ -171,10 +169,8 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     peersRef.current.set(remoteSocketId, pc);
     initiatorMap.current.set(remoteSocketId, isInitiator);
 
-    // Suppress automatic renegotiation — we manage offer/answer manually
     pc.onnegotiationneeded = null;
 
-    // Add all local tracks immediately so the remote side gets them
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current!);
@@ -187,7 +183,6 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         const next = new Map(prev);
         const cur  = next.get(remoteSocketId);
         if (cur && event.streams[0]) {
-          // Add any new tracks to the existing stream object so React refs stay stable
           event.streams[0].getTracks().forEach(t => {
             if (!cur.getTracks().find(x => x.id === t.id)) cur.addTrack(t);
           });
@@ -259,13 +254,12 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
-        // Apply initial mute state from store
         const { isMuted: initMuted } = useMeetingStore.getState();
         stream.getAudioTracks().forEach(t => { t.enabled = !initMuted; });
         localStreamRef.current = stream;
         mediaReadyRef.current  = true;
         setIsMediaReady(true);
-        updateLocalStream(stream);
+        setLocalStream(stream); // direct set on init — no previous stream to compare
         startVAD(stream);
         return;
       } catch { /* camera unavailable */ }
@@ -279,7 +273,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
         localStreamRef.current = stream;
         mediaReadyRef.current  = true;
         setIsMediaReady(true);
-        updateLocalStream(stream);
+        setLocalStream(stream);
         startVAD(stream);
         toast('No camera found — joined with audio only', { icon: '🎤' });
         return;
@@ -317,15 +311,14 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
   }, []); // run once
 
   // ── Socket signaling ──────────────────────────────────────────────────────
-  // Only re-runs when roomId or isMediaReady changes.
-  // All callbacks are accessed via stable refs to avoid stale closures.
-
-  const createPCRef       = useRef(createPeerConnection);
-  const closePCRef        = useRef(closePeerConnection);
-  const drainICERef       = useRef(drainIceCandidates);
+  const createPCRef  = useRef(createPeerConnection);
+  const closePCRef   = useRef(closePeerConnection);
+  const drainICERef  = useRef(drainIceCandidates);
   useEffect(() => { createPCRef.current = createPeerConnection; }, [createPeerConnection]);
   useEffect(() => { closePCRef.current  = closePeerConnection;  }, [closePeerConnection]);
   useEffect(() => { drainICERef.current = drainIceCandidates;   }, [drainIceCandidates]);
+
+  const joinedRoomRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!roomId || !isMediaReady) return;
@@ -333,8 +326,6 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     const socket = getSocket();
     if (!socket) return;
 
-    // ── Deterministic initiator: lexicographically larger socket ID initiates.
-    // This guarantees exactly one side sends the offer, preventing glare.
     const shouldInitiate = (remoteId: string): boolean => socket.id! > remoteId;
 
     const handleUserJoined = ({ socketId }: { socketId: string }) => {
@@ -342,36 +333,29 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       createPCRef.current(socketId, shouldInitiate(socketId));
     };
 
-    // New joiner receives the existing participants list and connects to each
     const handleParticipantsList = (list: { socketId: string }[]) => {
       list.forEach(({ socketId }) => {
         if (!socketId || socketId === socket.id) return;
         createPCRef.current(socketId, shouldInitiate(socketId));
       });
-      // Broadcast our media state so existing participants see correct camera/mic
       const { isMuted: m, isVideoOff: v, isScreenSharing: ss } = useMeetingStore.getState();
       socket.emit('meeting:media-state', { roomId, isMuted: m, isVideoOff: v, isScreenSharing: ss });
     };
 
     const handleSignal = async ({ signal, from }: { signal: any; from: string }) => {
       if (signal.type === 'offer') {
-        // Close failed/closed connections before re-creating
         const existing = peersRef.current.get(from);
         if (existing && (existing.connectionState === 'failed' || existing.connectionState === 'closed')) {
           closePCRef.current(from);
         }
-        // Get or create — we are NOT the initiator when receiving an offer
         let pc = peersRef.current.get(from);
         if (!pc) pc = createPCRef.current(from, false);
 
         try {
-          // Glare resolution: if we also sent an offer, the lower socket ID yields
           if (pc.signalingState === 'have-local-offer') {
             if (socket.id! < from) {
-              // We yield — rollback our offer and accept theirs
               await pc.setLocalDescription({ type: 'rollback' });
             } else {
-              // They should yield — ignore their offer
               return;
             }
           }
@@ -421,11 +405,13 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       }
     };
 
-    const handleUserLeft = ({ socketId }: { socketId: string }) => closePCRef.current(socketId);
-
-    const handleReconnect = () => {
-      // Re-join room after socket reconnects (socket.id changes on reconnect)
-      socket.emit('meeting:join', roomId);
+    const handleUserLeft    = ({ socketId }: { socketId: string }) => closePCRef.current(socketId);
+    const handleReconnect   = () => {
+      // Only re-join if we were previously in this room
+      if (joinedRoomRef.current === roomId) {
+        joinedRoomRef.current = null; // reset so the join below is allowed
+        socket.emit('meeting:join', roomId);
+      }
     };
 
     socket.on('meeting:user-joined',       handleUserJoined);
@@ -434,11 +420,12 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     socket.on('meeting:user-left',         handleUserLeft);
     socket.on('connect',                   handleReconnect);
 
-    // Join the room — server sends meeting:participants-list back to us
-    // and broadcasts meeting:user-joined to existing peers
-    socket.emit('meeting:join', roomId);
+    // Only emit join once per roomId
+    if (joinedRoomRef.current !== roomId) {
+      joinedRoomRef.current = roomId;
+      socket.emit('meeting:join', roomId);
+    }
 
-    // Broadcast our initial media state so peers see correct camera/mic immediately
     const { isMuted: m, isVideoOff: v, isScreenSharing: ss } = useMeetingStore.getState();
     socket.emit('meeting:media-state', { roomId, isMuted: m, isVideoOff: v, isScreenSharing: ss });
 
@@ -449,9 +436,9 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       socket.off('meeting:user-left',         handleUserLeft);
       socket.off('connect',                   handleReconnect);
       socket.emit('meeting:leave', roomId);
+      joinedRoomRef.current = null;
       peersRef.current.forEach((_, id) => closePCRef.current(id));
     };
-  // Only re-run when roomId or media readiness changes — NOT on callback identity changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, isMediaReady]);
 
@@ -485,11 +472,14 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
           toast.error('Could not turn on camera. Check browser permissions.');
         }
       }
-      broadcastMediaState(isVideoOff, getCurrentMediaState().isMuted);
+      const { isMuted: m, isVideoOff: v } = useMeetingStore.getState();
+      broadcastMediaState(v, m);
     };
 
     toggleCamera();
-  }, [isVideoOff, broadcastMediaState, getCurrentMediaState, replaceVideoTrackInPeers]);
+  // replaceVideoTrackInPeers, updateLocalStream, broadcastMediaState are all
+  // stable (empty dep arrays) so this effect only re-runs when isVideoOff changes.
+  }, [isVideoOff, replaceVideoTrackInPeers, updateLocalStream, broadcastMediaState]);
 
   // ── Mic toggle ────────────────────────────────────────────────────────────
   const prevMuted = useRef<boolean | null>(null);
@@ -500,26 +490,24 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
     prevMuted.current = isMuted;
 
     localStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !isMuted; });
-    broadcastMediaState(getCurrentMediaState().isVideoOff, isMuted);
-  }, [isMuted, broadcastMediaState, getCurrentMediaState]);
+    const { isMuted: m, isVideoOff: v } = useMeetingStore.getState();
+    broadcastMediaState(v, m);
+  }, [isMuted, broadcastMediaState]);
 
   // ── Screen share ──────────────────────────────────────────────────────────
   const stopScreenShare = useCallback(() => {
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
     screenStreamRef.current = null;
-    setScreenSharing(false);
+    useMeetingStore.getState().setScreenSharing(false);
     const s = getSocket();
     if (s?.connected && roomIdRef.current) {
       s.emit('meeting:screen-share', { roomId: roomIdRef.current, isSharing: false });
+      const { isMuted: m, isVideoOff: v } = useMeetingStore.getState();
       s.emit('meeting:media-state', {
-        roomId: roomIdRef.current,
-        isMuted: useMeetingStore.getState().isMuted,
-        isVideoOff: useMeetingStore.getState().isVideoOff,
-        isScreenSharing: false,
+        roomId: roomIdRef.current, isMuted: m, isVideoOff: v, isScreenSharing: false,
       });
     }
 
-    // Restore camera track
     const { isVideoOff: vOff } = useMeetingStore.getState();
     if (!vOff) {
       navigator.mediaDevices.getUserMedia({ video: true })
@@ -546,7 +534,7 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       replaceVideoTrackInPeers(null);
       updateLocalStream(new MediaStream(localStreamRef.current?.getTracks() ?? []));
     }
-  }, [setScreenSharing, replaceVideoTrackInPeers]);
+  }, [replaceVideoTrackInPeers, updateLocalStream]);
 
   const startScreenShare = useCallback(async () => {
     try {
@@ -573,24 +561,22 @@ export const useWebRTC = ({ roomId, userId }: WebRTCConfig) => {
       }
 
       updateLocalStream(new MediaStream(localStreamRef.current.getTracks()));
-      setScreenSharing(true);
+      useMeetingStore.getState().setScreenSharing(true);
       const s = getSocket();
       if (s?.connected && roomIdRef.current) {
         s.emit('meeting:screen-share', { roomId: roomIdRef.current, isSharing: true });
+        const { isMuted: m, isVideoOff: v } = useMeetingStore.getState();
         s.emit('meeting:media-state', {
-          roomId: roomIdRef.current,
-          isMuted: useMeetingStore.getState().isMuted,
-          isVideoOff: useMeetingStore.getState().isVideoOff,
-          isScreenSharing: true,
+          roomId: roomIdRef.current, isMuted: m, isVideoOff: v, isScreenSharing: true,
         });
       }
     } catch (err: any) {
       if (err?.name !== 'NotAllowedError') {
         toast.error('Screen sharing failed. Please try again.');
       }
-      setScreenSharing(false);
+      useMeetingStore.getState().setScreenSharing(false);
     }
-  }, [setScreenSharing, stopScreenShare, replaceVideoTrackInPeers]);
+  }, [stopScreenShare, replaceVideoTrackInPeers, updateLocalStream]);
 
   // ── Clean leave ───────────────────────────────────────────────────────────
   const stopAllTracks = useCallback(() => {

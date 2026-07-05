@@ -106,7 +106,7 @@ const TaskCard = ({
 
           <select
             value={task.assignedTo?._id ?? ''}
-            onChange={e => onUpdate(task._id, { assignedTo: (e.target.value || undefined) as any })}
+            onChange={e => onUpdate(task._id, { assignedTo: e.target.value ? members.find(m => m._id === e.target.value) : undefined })}
             className="text-xs border border-[var(--color-border)] rounded-lg px-2 py-1 bg-[var(--color-surface)] text-[var(--color-text)] outline-none cursor-pointer"
           >
             <option value="">Unassigned</option>
@@ -298,9 +298,9 @@ const TeamWorkspace = () => {
     enabled: !!teamId,
   });
 
-  const members = (team?.members ?? [])
+  const members: { _id: string; name: string; email: string; avatar?: string }[] = (team?.members ?? [])
     .filter((m: any) => m.status === 'active')
-    .map((m: any) => ({ _id: m.user._id, name: m.user.name, avatar: m.user.avatar }));
+    .map((m: any) => ({ _id: m.user._id, name: m.user.name, email: m.user.email ?? '', avatar: m.user.avatar }));
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['team-tasks', teamId] });
 

@@ -9,10 +9,12 @@ export const useChat = (meetingId: string) => {
   const user = useAppSelector((s) => s.auth.user);
   const messages     = useChatStore((s) => s.messages);
   const typingUsers  = useChatStore((s) => s.typingUsers);
-  const { addMessage, setMessages, setTyping, markRead } = useChatStore.getState();
 
   useEffect(() => {
     if (!socket || !meetingId) return;
+    // Read actions from getState() inside the effect so they are never stale
+    // and never appear in the dependency array.
+    const { addMessage, setMessages, setTyping, markRead } = useChatStore.getState();
 
     const join = () => socket.emit('chat:join', meetingId);
     join();

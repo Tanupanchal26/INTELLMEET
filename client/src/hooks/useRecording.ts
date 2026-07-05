@@ -1,7 +1,7 @@
 import { useRef, useCallback, useEffect } from 'react';
+import { getSocket } from '../utils/socket';
 import { useMeetingStore } from '../store/meeting/meeting.store';
 import { recordingService } from '../api/recording.api';
-import { getSocket } from '../utils/socket';
 import toast from 'react-hot-toast';
 
 const SUPPORTED_MIME = (() => {
@@ -16,7 +16,10 @@ export const useRecording = (
   localStream: MediaStream | null,
   screenStreamRef?: React.RefObject<MediaStream | null>,
 ) => {
-  const isRecording = useMeetingStore((s) => s.isRecording);
+  // Do NOT subscribe to isRecording from the store here — that would cause
+  // this hook (and every component using it) to re-render on every recording
+  // state change, which feeds back into the infinite loop.
+  // The hook manages recording state internally via isRecordingRef.
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef        = useRef<BlobPart[]>([]);
   const isRecordingRef   = useRef(false);

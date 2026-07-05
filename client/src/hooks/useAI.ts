@@ -81,7 +81,7 @@ export const useAI = (meetingId: string) => {
 
       let tx = tData?.transcript?.trim() ?? '';
       if (!tx) {
-        const chunks = tData?.allChunks ?? tData?.chunks ?? [];
+        const chunks = tData?.chunks ?? [];
         if (chunks.length > 0) {
           tx = chunks.map((c: any) => `${c.speaker ?? 'Speaker'}: ${c.text}`).join('\n');
         }

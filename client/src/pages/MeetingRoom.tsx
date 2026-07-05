@@ -170,19 +170,23 @@ const MeetingRoom = () => {
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, panelOpen);
 
-  const isRecording       = useMeetingStore((s) => s.isRecording);
-  const currentMeeting    = useMeetingStore((s) => s.currentMeeting);
-  const { localStreamRef, localStream, remoteStreams, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks } = useWebRTC({ roomId: socketRoomId, userId: user?.id ?? '' });
-  
-  useTranscription(id ?? '');
-  // useMeeting registers socket event listeners — pass socketRoomId so it
-  // re-registers when the real roomId arrives from the server
-  const { leaveMeeting, endMeeting } = useMeeting(socketRoomId || undefined, () => stopRecording());
+  const isRecording    = useMeetingStore((s) => s.isRecording);
+  const meetingTitle   = useMeetingStore((s) => s.currentMeeting?.title ?? 'Meeting');
+  const isScreenSharing = useMeetingStore((s) => s.isScreenSharing);
 
-  // Auto-start recording when localStream is ready — fires at most once.
-  // recordingStartedRef guards against re-entry if localStream identity changes.
+  const { localStreamRef, localStream, remoteStreams, screenStreamRef, startScreenShare, stopScreenShare, stopAllTracks } = useWebRTC({ roomId: socketRoomId, userId: user?.id ?? '' });
+
+  // Declare BEFORE useMeeting so stopRecording exists when the callback is built
   const { startRecording, stopRecording, switchSource } = useRecording(id ?? '', localStream, screenStreamRef);
   const recordingStartedRef = useRef(false);
+
+  // Stable ref — keeps onBeforeLeave from capturing a stale stopRecording
+  const stopRecordingRef = useRef(stopRecording);
+  useEffect(() => { stopRecordingRef.current = stopRecording; }, [stopRecording]);
+
+  // Single call each — duplicate calls cause duplicate socket listeners
+  useTranscription(id ?? '');
+  const { leaveMeeting, endMeeting } = useMeeting(socketRoomId || undefined, () => stopRecordingRef.current());
 
   useEffect(() => {
     if (!localStream || recordingStartedRef.current) return;
@@ -197,7 +201,6 @@ const MeetingRoom = () => {
 
   // Switch recording source seamlessly when screen sharing starts/stops
   const prevScreenSharing = useRef(false);
-  const isScreenSharing = useMeetingStore((s) => s.isScreenSharing);
   useEffect(() => {
     if (!recordingStartedRef.current) return;
     if (isScreenSharing === prevScreenSharing.current) return;
@@ -214,9 +217,15 @@ const MeetingRoom = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isScreenSharing]);
 
-  // Start meeting on mount, fetch real title + roomId, clean up on leave
+  // Guard: run initMeeting exactly once per mount, regardless of dep changes.
+  // user?.id can be undefined on first render then resolve, which would cause
+  // the effect to fire twice without this ref.
+  const meetingInitialized = useRef(false);
+
+  // Start meeting on mount
   useEffect(() => {
-    if (!id) return;
+    if (!id || meetingInitialized.current) return;
+    meetingInitialized.current = true;
     const initMeeting = async () => {
       try {
         // start() is idempotent: host activates, participant auto-starts or joins active
@@ -259,8 +268,6 @@ const MeetingRoom = () => {
     const t = setInterval(() => setNow(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), 30_000);
     return () => clearInterval(t);
   }, []);
-
-  const meetingTitle = currentMeeting?.title ?? 'Meeting';
 
   return (
     <div className="fixed inset-0 flex flex-col bg-[var(--color-bg)] text-[var(--color-text)] overflow-hidden" style={{ zIndex: 'var(--z-max)' }}>
