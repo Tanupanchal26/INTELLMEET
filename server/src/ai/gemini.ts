@@ -1,5 +1,4 @@
 import { GoogleGenAI } from '@google/genai';
-import config from '../config/env';
 import logger from '../shared/utils/logger';
 
 let _client: GoogleGenAI | null = null;
@@ -18,14 +17,16 @@ class MockGemini {
   }
 }
 
+const getApiKey = () => process.env.GEMINI_API_KEY || '';
+
 export const getClient = (): any => {
-  if (!config.gemini.apiKey) {
+  if (!getApiKey()) {
     logger.warn('[AI] GEMINI_API_KEY not configured — using Mock AI Service.');
     return new MockGemini();
   }
   if (!_client) {
-    logger.info(`[AI] Initializing Gemini client (key prefix: ${config.gemini.apiKey.slice(0, 8)}…)`);
-    _client = new GoogleGenAI({ apiKey: config.gemini.apiKey });
+    logger.info(`[AI] Initializing Gemini client (key prefix: ${getApiKey().slice(0, 8)}…)`);
+    _client = new GoogleGenAI({ apiKey: getApiKey() });
   }
   return _client;
 };
