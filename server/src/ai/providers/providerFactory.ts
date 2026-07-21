@@ -3,19 +3,19 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Reads AI_MODE from the environment and returns the appropriate provider.
  *
- * AI_MODE=demo    → DemoProvider   (no external API calls, always works)
- * AI_MODE=gemini  → GeminiProvider (requires GEMINI_API_KEY)
- * AI_MODE=openai  → OpenAIProvider (requires OPENAI_API_KEY)
+ * AI_MODE=demo  → DemoProvider  (no external API calls, always works)
+ * AI_MODE=grok  → GrokProvider  (requires GROK_API_KEY)
+ * AI_MODE=openai → OpenAIProvider (requires OPENAI_API_KEY)
  *
  * Defaults to demo if AI_MODE is unset or unrecognised.
  */
 import type { AIProvider } from './demoProvider';
 import { demoProvider }   from './demoProvider';
-import { geminiProvider } from './geminiProvider';
+import { grokProvider }   from './grokProvider';
 import { openaiProvider } from './openaiProvider';
 import logger from '../../shared/utils/logger';
 
-type AIMode = 'demo' | 'gemini' | 'openai';
+type AIMode = 'demo' | 'grok' | 'openai';
 
 let _provider: AIProvider | null = null;
 
@@ -25,9 +25,9 @@ export const getAIProvider = (): AIProvider => {
   const mode = (process.env.AI_MODE || 'demo').toLowerCase() as AIMode;
 
   switch (mode) {
-    case 'gemini':
-      logger.info('[AI] Provider: Gemini');
-      _provider = geminiProvider;
+    case 'grok':
+      logger.info('[AI] Provider: Grok (xAI)');
+      _provider = grokProvider;
       break;
     case 'openai':
       logger.info('[AI] Provider: OpenAI');

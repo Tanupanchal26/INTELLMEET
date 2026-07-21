@@ -25,7 +25,7 @@ export interface Config {
   sessionSecret: string;
   cors:      { allowedOrigins: string[] };
   cloudinary: { name: string; key: string; secret: string };
-  gemini:     { apiKey: string };
+  grok:       { apiKey: string };
   smtp: {
     host:  string;
     port:  number;
@@ -62,9 +62,9 @@ const schema = Joi.object({
   CLOUDINARY_API_KEY:    Joi.string().optional().allow(''),
   CLOUDINARY_API_SECRET: Joi.string().optional().allow(''),
 
-  GEMINI_API_KEY: Joi.string().optional().allow(''),
+  GROK_API_KEY:   Joi.string().optional().allow(''),
 
-  AI_MODE: Joi.string().valid('demo', 'gemini', 'openai').default('demo'),
+  AI_MODE: Joi.string().valid('demo', 'grok', 'openai').default('demo'),
 
   SMTP_HOST: Joi.string().optional().allow(''),
   SMTP_PORT: Joi.number().default(587),
@@ -127,7 +127,7 @@ const config: Config = {
     secret: env.CLOUDINARY_API_SECRET ?? '',
   },
 
-  gemini:    { apiKey: env.GEMINI_API_KEY ?? '' },
+  grok:      { apiKey: env.GROK_API_KEY   ?? '' },
 
   smtp: {
     host: env.SMTP_HOST ?? '',

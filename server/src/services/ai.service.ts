@@ -11,7 +11,7 @@ const { getRedisClient }       = require('../config/redis');
 const { CACHE_TTL }            = require('../constants');
 const logger = require('../shared/utils/logger').default;
 
-const IS_DEMO = (process.env.AI_MODE || 'demo') === 'demo';
+const IS_DEMO = false; // Grok AI is active
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
 const cacheGet = async (key: string) => {
