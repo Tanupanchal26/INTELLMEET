@@ -1,17 +1,18 @@
-// @ts-nocheck
-const { getAIProvider } = require('./providers/providerFactory');
+import { getAIProvider } from './providers/providerFactory';
 
-const sanitizeUserMessage = (msg: string): string =>
+const sanitize = (msg: string): string =>
   msg.replace(/\bsystem\b/gi, 'sys').replace(/\bignore previous\b/gi, '').slice(0, 2000);
 
-exports.chat = (userMessage: string, context: {
-  transcript?:    string;
-  summary?:       string;
-  history?:       { role: string; content: string }[];
-  meetingTitles?: string[];
-} = {}) => getAIProvider().chat(sanitizeUserMessage(userMessage), context);
+export const chat = (
+  userMessage: string,
+  context: {
+    transcript?:    string;
+    summary?:       string;
+    history?:       { role: string; content: string }[];
+    meetingTitles?: string[];
+    meetingTitle?:  string;
+  } = {},
+) => getAIProvider().chat(sanitize(userMessage), context);
 
-exports.generateTasks = (prompt: string, transcript = '') =>
-  getAIProvider().generateTasks(sanitizeUserMessage(prompt), transcript);
-
-export {};
+export const generateTasks = (prompt: string, transcript = '') =>
+  getAIProvider().generateTasks(sanitize(prompt), transcript);

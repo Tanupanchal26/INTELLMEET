@@ -9,9 +9,7 @@ const { chat, generateTasks }  = require('../ai/assistant');
 const { semanticSearch }       = require('../ai/semanticSearch');
 const { getRedisClient }       = require('../config/redis');
 const { CACHE_TTL }            = require('../constants');
-const logger = require('../shared/utils/logger').default;
-
-const IS_DEMO = false; // Grok AI is active
+const logger                   = require('../shared/utils/logger').default;
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
 const cacheGet = async (key: string) => {
@@ -93,8 +91,7 @@ exports.summarize = async (meetingId: string, length: 'short' | 'medium' | 'deta
     resolveMeetingCtx(meetingId),
   ]);
 
-  // In demo mode we generate even without a transcript
-  if (!transcript && !IS_DEMO) return '';
+  if (!transcript) return '';
 
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { processingStatus: 'processing' }, { upsert: true });
 
@@ -144,7 +141,7 @@ exports.getActionItems = async (meetingId: string) => {
     resolveMeetingCtx(meetingId),
   ]);
 
-  if (!transcript && !IS_DEMO) return [];
+  if (!transcript) return [];
 
   const actionItems = await extractActionItems(transcript, ctx);
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { actionItems }, { upsert: true });
@@ -161,7 +158,7 @@ exports.getDecisions = async (meetingId: string) => {
     resolveMeetingCtx(meetingId),
   ]);
 
-  if (!transcript && !IS_DEMO) return [];
+  if (!transcript) return [];
 
   const decisions = await extractDecisions(transcript, ctx);
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { decisions }, { upsert: true });
@@ -185,7 +182,7 @@ exports.getKeywords = async (meetingId: string) => {
     resolveMeetingCtx(meetingId),
   ]);
 
-  if (!transcript && !IS_DEMO) return { topics: [], people: [], projects: [], technologies: [], frequentTerms: [] };
+  if (!transcript) return { topics: [], people: [], projects: [], technologies: [], frequentTerms: [] };
 
   const keywords = await extractKeywords(transcript, ctx);
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { keywords }, { upsert: true });
@@ -204,7 +201,7 @@ exports.getSmartNotes = async (meetingId: string) => {
     resolveTranscript(meetingId),
   ]);
 
-  if (!transcript && !IS_DEMO) return null;
+  if (!transcript) return null;
 
   const agendaItems = (meeting?.agenda || []).map((a: any) => a.title).filter(Boolean);
   const smartNotes = await generateSmartNotes({
@@ -230,7 +227,7 @@ exports.generateMeetingMinutes = async (meetingId: string) => {
   ]);
 
   if (!meeting) throw new Error('Meeting not found');
-  if (!transcript && !IS_DEMO) return '';
+  if (!transcript) return '';
 
   const minutes = await generateMinutes({
     transcript:   transcript || '',
@@ -312,9 +309,9 @@ exports.getFollowUpSuggestions = async (meetingId: string) => {
     resolveMeetingCtx(meetingId),
   ]);
 
-  if (!transcript && !IS_DEMO) return [];
+  if (!transcript) return [];
 
-  const followUpSuggestions = await extractFollowUpSuggestions(transcript || '', ctx);
+  const followUpSuggestions = await extractFollowUpSuggestions(transcript, ctx);
   await AIResult.findOneAndUpdate({ meeting: meetingId }, { followUpSuggestions }, { upsert: true });
   await cacheSet(cacheKey, followUpSuggestions);
   return followUpSuggestions;
@@ -328,7 +325,7 @@ exports.runFullPipeline = async (meetingId: string) => {
   ]);
 
   if (!meeting) throw new Error('Meeting not found');
-  if (!transcript && !IS_DEMO) throw new Error('No transcript available');
+  if (!transcript) throw new Error('No transcript available. Please record or upload audio first.');
 
   const ctx = {
     meetingId,
