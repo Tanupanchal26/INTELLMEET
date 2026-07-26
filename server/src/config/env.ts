@@ -67,7 +67,7 @@ const schema = Joi.object({
   AI_RETRIES:    Joi.number().default(3),
   AI_TIMEOUT:    Joi.number().default(30000),
 
-  AI_MODE: Joi.string().valid('grok').default('grok'),
+  AI_MODE: Joi.string().default('grok'),
 
   SMTP_HOST: Joi.string().optional().allow(''),
   SMTP_PORT: Joi.number().default(587),
