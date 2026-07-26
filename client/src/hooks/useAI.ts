@@ -113,7 +113,7 @@ export const useAI = (meetingId: string) => {
     } catch (err: any) {
       const raw = err?.response?.data?.message || err?.message || '';
       const msg = raw.includes('429') || raw.includes('quota')
-        ? 'AI quota exceeded. Please check your OpenAI billing at platform.openai.com/settings/billing'
+        ? 'Grok API rate limit exceeded. Please try again in a moment.'
         : raw || 'Failed to generate summary';
       toast.error(msg, { duration: 6000 });
     } finally {

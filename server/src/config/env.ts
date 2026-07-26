@@ -62,9 +62,12 @@ const schema = Joi.object({
   CLOUDINARY_API_KEY:    Joi.string().optional().allow(''),
   CLOUDINARY_API_SECRET: Joi.string().optional().allow(''),
 
-  GROK_API_KEY:   Joi.string().optional().allow(''),
+  GROK_API_KEY:  Joi.string().optional().allow(''),
+  GROQ_API_KEY:  Joi.string().optional().allow(''),
+  AI_RETRIES:    Joi.number().default(3),
+  AI_TIMEOUT:    Joi.number().default(30000),
 
-  AI_MODE: Joi.string().valid('demo', 'grok', 'openai').default('demo'),
+  AI_MODE: Joi.string().valid('grok').default('grok'),
 
   SMTP_HOST: Joi.string().optional().allow(''),
   SMTP_PORT: Joi.number().default(587),
@@ -89,7 +92,7 @@ if (error) {
 // Reject placeholder secrets in production
 if (env.NODE_ENV === 'production') {
   const placeholders = ['replace-with', 'your-secret', 'changeme', 'example', 'placeholder'];
-  const sensitiveKeys = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'SESSION_SECRET', 'GEMINI_API_KEY', 'CLOUDINARY_API_SECRET', 'GOOGLE_CLIENT_SECRET'];
+  const sensitiveKeys = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'SESSION_SECRET', 'GROK_API_KEY', 'CLOUDINARY_API_SECRET', 'GOOGLE_CLIENT_SECRET'];
   for (const key of sensitiveKeys) {
     const val: string = (env[key] ?? '').toLowerCase();
     if (placeholders.some((p) => val.includes(p))) {

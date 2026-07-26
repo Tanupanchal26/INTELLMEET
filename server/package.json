@@ -23,7 +23,9 @@
         "ts-jest",
         {
           "tsconfig": {
-            "strict": false
+            "strict": false,
+            "rootDir": ".",
+            "outDir": "./dist"
           }
         }
       ]

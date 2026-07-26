@@ -139,7 +139,7 @@ const AISummary = () => {
     } catch (err: any) {
       const raw = err?.response?.data?.message || err?.message || '';
       const msg = raw.includes('429') || raw.includes('quota')
-        ? 'AI quota exceeded. Please check your billing.'
+        ? 'Grok API rate limit exceeded. Please try again in a moment.'
         : raw || 'Failed to generate summary';
       toast.error(msg, { duration: 6000 });
     } finally {
@@ -244,9 +244,9 @@ const AISummary = () => {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-[1.375rem] font-bold text-[var(--color-text)] tracking-tight">AI Meeting Intelligence</h1>
-          <p className="text-[13px] text-[var(--color-text-secondary)] mt-0.5 font-medium">Transcripts, summaries, and action items — powered by GPT-4o</p>
+          <p className="text-[13px] text-[var(--color-text-secondary)] mt-0.5 font-medium">Transcripts, summaries, and action items — powered by Grok AI</p>
         </div>
-        <Badge variant="primary" dot pulse>GPT-4o</Badge>
+        <Badge variant="primary" dot pulse>Grok AI</Badge>
       </div>
 
       {/* Capabilities strip */}
