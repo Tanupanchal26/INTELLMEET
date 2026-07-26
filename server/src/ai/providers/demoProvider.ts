@@ -23,6 +23,6 @@ export interface AIProvider {
   generateSmartNotes(opts: { transcript: string; title: string; agenda: string[] }, ctx?: MeetingContext): Promise<any>;
   chat(message: string, context: any): Promise<string>;
   generateTasks(prompt: string, transcript: string, ctx?: MeetingContext): Promise<any[]>;
-  semanticSearch(query: string, documents: any[], topK?: number): Promise<any[]>;
+  semanticSearch(query: string, documents: any[]): Promise<any[]>;
   embed(text: string): Promise<number[]>;
 }
